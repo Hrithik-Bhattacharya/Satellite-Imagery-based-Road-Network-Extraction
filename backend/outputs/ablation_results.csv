@@ -1,0 +1,5 @@
+Experiment,Model,Loss,WeakLabels,Params,Size_MB,IoU,F1,APLS,TOPO,FPS
+A,U-Net Baseline,BCE,False,N/A (no checkpoint),N/A,N/A (run training first),N/A,N/A,N/A,N/A
+B,MobileViT v2,BCE,False,N/A (no checkpoint),N/A,N/A (run training first),N/A,N/A,N/A,N/A
+C,MobileViT v2 + clDice,clDice,False,N/A (no checkpoint),N/A,N/A (run training first),N/A,N/A,N/A,N/A
+D,MobileViT v2 + clDice + Weak Labels,clDice,True,N/A (no checkpoint),N/A,N/A (run training first),N/A,N/A,N/A,N/A

@@ -1,0 +1,54 @@
+[
+  {
+    "Experiment": "A",
+    "Model": "U-Net Baseline",
+    "Loss": "BCE",
+    "WeakLabels": false,
+    "Params": "N/A (no checkpoint)",
+    "Size_MB": "N/A",
+    "FPS": "N/A",
+    "IoU": "N/A (run training first)",
+    "F1": "N/A",
+    "APLS": "N/A",
+    "TOPO": "N/A"
+  },
+  {
+    "Experiment": "B",
+    "Model": "MobileViT v2",
+    "Loss": "BCE",
+    "WeakLabels": false,
+    "Params": "N/A (no checkpoint)",
+    "Size_MB": "N/A",
+    "FPS": "N/A",
+    "IoU": "N/A (run training first)",
+    "F1": "N/A",
+    "APLS": "N/A",
+    "TOPO": "N/A"
+  },
+  {
+    "Experiment": "C",
+    "Model": "MobileViT v2 + clDice",
+    "Loss": "clDice",
+    "WeakLabels": false,
+    "Params": "N/A (no checkpoint)",
+    "Size_MB": "N/A",
+    "FPS": "N/A",
+    "IoU": "N/A (run training first)",
+    "F1": "N/A",
+    "APLS": "N/A",
+    "TOPO": "N/A"
+  },
+  {
+    "Experiment": "D",
+    "Model": "MobileViT v2 + clDice + Weak Labels",
+    "Loss": "clDice",
+    "WeakLabels": true,
+    "Params": "N/A (no checkpoint)",
+    "Size_MB": "N/A",
+    "FPS": "N/A",
+    "IoU": "N/A (run training first)",
+    "F1": "N/A",
+    "APLS": "N/A",
+    "TOPO": "N/A"
+  }
+]

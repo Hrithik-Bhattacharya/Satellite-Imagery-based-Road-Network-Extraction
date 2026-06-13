@@ -1,0 +1,12 @@
+[
+  {
+    "artifact": "outputs\\ablation_results.csv",
+    "type": "ablation",
+    "timestamp": 1781183979.99986
+  },
+  {
+    "artifact": "outputs\\ablation_results.json",
+    "type": "ablation",
+    "timestamp": 1781183980.0049598
+  }
+]

@@ -1,52 +1,169 @@
-# Satellite-Imagery-based-Road-Network-Extraction
-## 📋 Executive Project Summary & WBS Overview
+# Lightweight MobileViT-Graph Network for Topological Rural Road Extraction
 
-This plan synthesizes the foundational strategies from your initial planning documents with the modern technical approaches highlighted in the rural roads project proposal. It specifically addresses the **Domain Shift** seen when applying standard models to Indian rural topographies where dirt roads are slender, highly irregular, and hidden by tree canopies or shadows.
-
-By combining an ultra-lightweight **MobileViT v2** backbone with **Centerline-Dice (clDice) Loss** , the team can maintain the global structural context of a heavy transformer while matching the fast inference speeds of edge-friendly networks , relying on **DeepGlobe** and **OpenStreetMap (OSM) weak labels**  for training.
-
-Below is the **4-Member Project Structure** embedded within the generated layout:
-
-#### 👥 Roles and Key Responsibilities
-
-1. **Member 1: Lead Architect (Pixel/Segmentation Focus)**
-* 
-**Core Focus:** Building the lightweight encoder-decoder architecture using **MobileViT v2** blocks.
-* 
-**Responsibilities:** Optimizing parameter count and computational layers; managing attention mechanics to capture long, continuous road structures ; and ensuring high inference speeds (Frames Per Second / FPS).
-
-2. **Member 2: Graph & Loss Engineer (Topology/Connectivity Focus)**
-* 
-**Core Focus:** Implementing graph-theoretic modeling and topology-preserving losses.
-* 
-**Responsibilities:** Coding the **clDice function** ; creating the morphological skeletonization modules to ensure the network bridges occluded road gaps instead of just calculating pixel count ; and penalizing topological disconnections during backpropagation.
-
-3. **Member 3: Data & Pipeline Engineer (Data/Weak Supervision Focus)**
-* 
-**Core Focus:** Dataset curation, pipeline optimization, and weak supervision constraints.
-* 
-**Responsibilities:** Ingesting and preprocessing the **DeepGlobe Dataset** ; configuring the **weakly supervised framework** by transforming OpenStreetMap (OSM) vector line strings into one-pixel training paths ; and writing data augmentations for shadows, cloud cover, and canopy occlusions.
-
-4. **Member 4: Validation & MLOps (Evaluation/Metrics Focus)**
-* 
-**Core Focus:** Rigorous model validation and tracking performance metrics.
-
-
-* 
-**Responsibilities:** Building evaluation frameworks for non-pixel metrics like **APLS (Average Path Length Similarity)** and TOPO metrics ; running structural ablation studies ; and benchmarking performance against 100M+ parameter baseline models to prove scalable real-world auditing value.
+> **COE Research Project** — Satellite Imagery-based Rural Road Network Extraction using MobileViT v2 + clDice Loss
 
 ---
 
-### 📅 Phased High-Level Roadmap (6-Week Timeline)
+## Overview
 
-* **Week 1: Environment Baseline & Data Pipeline**
-* Repository initialization (M1); Prototype differentiable morphological skeleton layers (M2); DeepGlobe dataset tiling and data loader engineering (M3); Setup tracking dashboards (e.g., Weights & Biases) with basic IoU metrics (M4).
+In developing nations like India, mapping millions of kilometers of rural, unpaved roads under initiatives such as the **Pradhan Mantri Gram Sadak Yojana (PMGSY)** is critical — yet current manual auditing workflows are prohibitively slow and labor-intensive.
 
-* **Weeks 2–3: Core Model Formulation & Loss Fusion**
-* Construct MobileViT v2 encoder blocks (M1); Implement full clDice loss routines (M2); Set up OSM vector-to-raster weak annotation pipeline (M3); Package the network APLS calculation library (M4).
+Standard deep learning segmentation models trained on urban datasets exhibit severe **Domain Shift** when deployed in rural environments, where roads are slender, irregular, and frequently occluded by tree canopies, shadows, and complex terrain.
 
-* **Week 4: Integration, Training & Tuning**
-* Core pipeline integration (M1 + M2); Execute advanced data augmentations for canopy and shadow occlusions (M3); Generate graph alignment loss convergence profiles (M4).
+### Core Objective
 
-* **Weeks 5–6: Optimization, Ablation & Final Delivery**
-* Model optimization and export formats (ONNX/TensorRT) for real-world edge deployment testing (M1); Multi-loss optimization balancing cross-entropy and clDice coefficients (M2); Validate domain adaptation metrics (M3); Compile ablation studies matching parameter count vs. topological scores (M4).
+Construct an ultra-lightweight **encoder-decoder architecture** using **MobileViT v2** as a fast, low-parameter backbone, synthesized with graph-theoretic **clDice (Centerline-Dice) Loss** to enforce contiguous, navigable road predictions on Indian rural topographies — optimized for edge-device deployment.
+
+---
+
+## Project Structure
+
+```
+.
+├── backend/                        # All ML source code and scripts
+│   ├── src/
+│   │   ├── models/                 # Member 1: Model architectures
+│   │   │   ├── __init__.py
+│   │   │   ├── unet_baseline.py    # Phase 1 baseline (31M params)
+│   │   │   └── mobilevit_v2.py     # Phase 2 core model (478K params)
+│   │   ├── data/                   # Member 3: Data pipeline
+│   │   │   ├── dataset.py          # DeepGlobe dataset loader
+│   │   │   ├── augmentations.py    # Shadow, canopy, jitter augmentations
+│   │   │   ├── weak_labels.py      # OSM centerline → raster pipeline
+│   │   │   └── test_run.py
+│   │   └── utils/                  # Shared utilities (loss, metrics — Member 2 & 4)
+│   ├── scripts/
+│   │   ├── test_model.py           # Forward pass + parameter benchmark
+│   │   └── export_onnx.py          # Edge-device ONNX export
+│   ├── outputs/
+│   │   └── mobilevit_v2.onnx       # Compiled edge model (0.38 MB)
+│   └── requirements.txt
+│
+├── frontend/                       # Visualization / demo UI (in progress)
+│
+├── docs/
+│   ├── papers/                     # Research papers, literature review
+│   ├── planning/                   # Architecture diagrams
+│   └── proposal/                   # Project proposal & literature survey
+│
+├── tools/                          # AI research tooling (AI-Researcher-AV1)
+├── .gitignore
+└── README.md
+```
+
+---
+
+## Technical Approach
+
+### 1. Backbone Encoder — MobileViT v2
+Replaces the $O(N^2)$ computational complexity of standard Vision Transformers with **localized linear self-attention**, maintaining a global receptive field to "see" past occlusions where CNNs fail — while keeping the parameter footprint ultra-low.
+
+| Model | Parameters | Size |
+|---|---|---|
+| Baseline U-Net | 31,037,633 | Heavy |
+| **MobileViT v2 (ours)** | **478,849** | **Ultra-lightweight** |
+
+### 2. Loss Function — clDice (Centerline-Dice)
+Replaces standard pixel-wise IoU/BCE losses with a **graph-theoretic topology-preserving loss** that computes overlap explicitly on the morphological skeleton of predicted and ground-truth road centerlines:
+
+```
+clDice(X, Y) = 2 × ½(Prec_cl(X, Y) + Rec_cl(X, Y))
+```
+
+This penalizes topological disconnections — enforcing that predicted roads form navigable, continuous paths rather than fragmented pixel blobs.
+
+### 3. Weak Supervision — OSM Centerlines
+To eliminate manual annotation bottlenecks, training uses **1-pixel-wide vector line-strings** extracted from OpenStreetMap (OSM) as weak labels, which clDice iteratively expands into precise road boundary masks.
+
+---
+
+## Team Roles
+
+| Member | Role | Responsibilities | Status |
+|---|---|---|---|
+| **Member 1** | Lead Architect | MobileViT v2 encoder-decoder, ONNX export, parameter optimization | ✅ Complete |
+| **Member 2** | Graph & Loss Engineer | clDice loss, morphological skeletonization, topology constraints | 🔄 In progress |
+| **Member 3** | Data & Pipeline Engineer | DeepGlobe ingestion, augmentations, OSM weak supervision pipeline | ✅ Complete |
+| **Member 4** | Validation & MLOps | APLS metrics, ablation studies, W&B tracking, benchmarking | 🔄 In progress |
+
+---
+
+## 6-Week Execution Roadmap
+
+| Phase | Weeks | Focus |
+|---|---|---|
+| **Phase 1** | Week 1 | Environment setup, baseline U-Net, DeepGlobe pipeline, W&B dashboard |
+| **Phase 2** | Weeks 2–3 | MobileViT v2 encoder, clDice loss, OSM weak annotation, APLS library |
+| **Phase 3** | Week 4 | Full pipeline integration, training sweeps, advanced augmentations |
+| **Phase 4** | Weeks 5–6 | ONNX export, ablation studies, domain adaptation validation, final docs |
+
+---
+
+## Quickstart
+
+### Prerequisites
+```bash
+cd backend
+pip install -r requirements.txt
+```
+
+### Run Model Verification
+```bash
+cd backend
+python scripts/test_model.py
+```
+
+Expected output:
+```
+Detected Device: mps / cuda / cpu
+U-Net Parameters:        31,037,633
+MobileViT v2 Parameters: 478,849
+Forward pass successful!
+Output Shape: torch.Size([4, 1, 256, 256])
+✅ SUCCESS
+```
+
+### Export to ONNX (Edge Deployment)
+```bash
+cd backend
+python scripts/export_onnx.py
+# → outputs/mobilevit_v2.onnx (0.38 MB)
+```
+
+---
+
+## Dataset
+
+- **Primary:** [DeepGlobe Road Extraction Dataset](http://deepglobe.org/)
+- **Weak Labels:** OpenStreetMap (OSM) vector centerlines rasterized to 1-pixel line strings
+- **Domain Adaptation Target:** Indian rural satellite imagery (PMGSY corridors)
+
+---
+
+## Evaluation Metrics
+
+| Metric | Type | Purpose |
+|---|---|---|
+| IoU / F1 | Pixel-level | Baseline spatial accuracy |
+| **APLS** | Graph / routing | Navigability & path-length similarity |
+| **TOPO** | Topological | Connectivity and loop preservation |
+| FPS / Latency | Deployment | Edge-device real-world performance |
+
+---
+
+## Branches
+
+| Branch | Owner | Description |
+|---|---|---|
+| `main` | Team | Stable, merged releases |
+| `arya` | Member 1 | Lead architecture — MobileViT v2, ONNX export |
+| `dilraj` | Member 3 | Data pipeline — DeepGlobe, OSM, augmentations |
+
+---
+
+## References
+
+- MobileViT: Light-weight, General-purpose, and Mobile-friendly Vision Transformer (Mehta & Rastegari, 2021)
+- clDice — A Novel Topology-Preserving Loss Function for Tubular Structure Segmentation (Shit et al., 2021)
+- DeepGlobe Road Extraction Challenge (Demir et al., 2018)
+- PMGSY — Pradhan Mantri Gram Sadak Yojana, Government of India

@@ -1,0 +1,47 @@
+{
+  "timestamp": "2026-06-11 19:06:31",
+  "device": "cuda",
+  "input_shape": [
+    1,
+    3,
+    256,
+    256
+  ],
+  "warmup_iters": 5,
+  "benchmark_iters": 20,
+  "models": [
+    {
+      "model": "UNet",
+      "parameters": 31037633,
+      "size_mb": 118.399,
+      "latency_ms": 0.056,
+      "fps": 17942.05,
+      "param_verification": {
+        "claimed": 31037633,
+        "actual": 31037633,
+        "match": true,
+        "delta": 0
+      },
+      "status": "ok"
+    },
+    {
+      "model": "MobileViT_v2",
+      "parameters": 478849,
+      "size_mb": 1.827,
+      "latency_ms": 0.095,
+      "fps": 10492.63,
+      "param_verification": {
+        "claimed": 478849,
+        "actual": 478849,
+        "match": true,
+        "delta": 0
+      },
+      "status": "ok"
+    },
+    {
+      "model": "MobileViT_v2_ONNX",
+      "status": "skipped",
+      "reason": "ONNX file not found"
+    }
+  ]
+}
