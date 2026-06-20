@@ -99,7 +99,8 @@ cython_debug/
 *.engine
 data/
 datasets/
-models/
+/models/
+!backend/src/models/
 runs/
 wandb/
 .DS_Store
