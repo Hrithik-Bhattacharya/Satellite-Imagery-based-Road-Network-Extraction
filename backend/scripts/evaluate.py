@@ -10,7 +10,6 @@ Outputs:
     outputs/evaluation_results.csv    – per-image metric table
     outputs/evaluation_summary.json   – aggregate statistics
 """
-
 import argparse
 import csv
 import json
@@ -23,18 +22,22 @@ import numpy as np
 
 # Make sure backend/src is on the path when running from backend/
 _SCRIPT_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(_SCRIPT_DIR.parent))  # backend/
+sys.path.insert(0, str(_SCRIPT_DIR.parent))        # backend/
 sys.path.insert(0, str(_SCRIPT_DIR.parent / "src"))  # backend/src
 
 try:
     import cv2
     def _load_mask(path: str) -> np.ndarray:
         img = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
-        return img
+        # Ensure mask is binary/probability in [0,1]
+        if img is None:
+            return None
+        return (img.astype(np.float32) / 255.0)
 except ImportError:
     from PIL import Image
     def _load_mask(path: str) -> np.ndarray:
-        return np.array(Image.open(path).convert("L"))
+        img = np.array(Image.open(path).convert("L"))
+        return (img.astype(np.float32) / 255.0)
 
 from src.utils.metrics_iou  import compute_iou, compute_precision, compute_recall, compute_f1
 from src.utils.metrics_dice import compute_dice
@@ -42,30 +45,19 @@ from src.utils.metrics_apls import compute_apls
 from src.utils.metrics_topo import compute_topo
 from src.utils.wandb_logger import WandbLogger
 
-# Supported mask file extensions
 _MASK_EXTS = {".png", ".jpg", ".jpeg", ".tif", ".tiff"}
 
-
 def find_pairs(gt_dir: Path, pred_dir: Path) -> list[tuple[Path, Path]]:
-    """
-    Pair prediction files with ground-truth files by stem name.
-    Accepts any recognised image extension.
-    """
     gt_files = {f.stem: f for f in gt_dir.iterdir() if f.suffix.lower() in _MASK_EXTS}
     pred_files = {f.stem: f for f in pred_dir.iterdir() if f.suffix.lower() in _MASK_EXTS}
-
     common = sorted(set(gt_files) & set(pred_files))
     if not common:
         print(f"[WARNING] No matching stems found between {gt_dir} and {pred_dir}")
-
     return [(pred_files[s], gt_files[s]) for s in common]
 
-
 def evaluate_pair(pred_path: Path, gt_path: Path) -> dict:
-    """Run all metrics for one (pred, gt) pair. Returns metric dict."""
     pred = _load_mask(str(pred_path))
     gt   = _load_mask(str(gt_path))
-
     if pred is None or gt is None:
         return {"error": "Could not load image"}
 
@@ -78,7 +70,6 @@ def evaluate_pair(pred_path: Path, gt_path: Path) -> dict:
         "f1":        compute_f1(pred, gt),
     }
 
-    # Graph-based metrics (may be slow on large images)
     try:
         apls_result = compute_apls(pred, gt, n_samples=50)
         metrics["apls"]   = apls_result["apls"]
@@ -101,9 +92,7 @@ def evaluate_pair(pred_path: Path, gt_path: Path) -> dict:
 
     return metrics
 
-
 def aggregate(results: list[dict]) -> dict:
-    """Compute mean and std for each numeric metric across all pairs."""
     numeric_keys = [k for k in results[0] if k not in ("filename", "error") and
                     not k.endswith("_error") and isinstance(results[0][k], (int, float))]
     summary = {}
@@ -116,7 +105,6 @@ def aggregate(results: list[dict]) -> dict:
             "max":  float(np.max(vals))  if vals else 0.0,
         }
     return summary
-
 
 def main():
     parser = argparse.ArgumentParser(description="Evaluate road segmentation predictions.")
@@ -141,7 +129,6 @@ def main():
 
     pairs = find_pairs(gt_dir, pred_dir)
     print(f"Found {len(pairs)} image pairs to evaluate.")
-
     if not pairs:
         print("Nothing to evaluate.")
         sys.exit(0)
@@ -160,10 +147,7 @@ def main():
         results.append(r)
 
         if logger:
-            logger.log_metrics(
-                {k: v for k, v in r.items() if isinstance(v, (int, float))},
-                step=i,
-            )
+            logger.log_metrics({k: v for k, v in r.items() if isinstance(v, (int, float))}, step=i)
 
         print(f"IoU={r.get('iou', 0):.4f}  F1={r.get('f1', 0):.4f}  "
               f"APLS={r.get('apls', 0):.4f}  TOPO_F1={r.get('topo_f1', 0):.4f}")
@@ -171,7 +155,6 @@ def main():
     elapsed = time.time() - t0
     print(f"\nEvaluation complete in {elapsed:.1f}s")
 
-    # --- Write CSV ---
     csv_path = out_dir / "evaluation_results.csv"
     fieldnames = list(results[0].keys())
     with open(csv_path, "w", newline="") as f:
@@ -180,7 +163,6 @@ def main():
         writer.writerows(results)
     print(f"Saved per-image results: {csv_path}")
 
-    # --- Write summary JSON ---
     summary = aggregate(results)
     summary["n_images"] = len(results)
     summary["elapsed_seconds"] = elapsed
@@ -189,7 +171,6 @@ def main():
         json.dump(summary, f, indent=2)
     print(f"Saved summary: {summary_path}")
 
-    # Print summary table
     print("\n===== EVALUATION SUMMARY =====")
     for metric in ["iou", "dice", "precision", "recall", "f1", "apls", "topo_f1"]:
         if metric in summary:
@@ -202,7 +183,6 @@ def main():
         logger.log_artifact(str(csv_path),     artifact_type="evaluation")
         logger.log_artifact(str(summary_path), artifact_type="evaluation")
         logger.finish()
-
 
 if __name__ == "__main__":
     main()
