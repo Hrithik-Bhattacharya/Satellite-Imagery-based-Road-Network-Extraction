@@ -587,7 +587,7 @@ class MobileViT_v2(nn.Module):
         d1 = self.dec1(torch.cat([self.up1(d2), s1], dim=1))  # 128 × 128
 
         out = self.head(self.up0(d1))                         # 256 × 256
-        return torch.sigmoid(out)
+        return out
 
     # ── Convenience ────────────────────────────────────────────────────
 
