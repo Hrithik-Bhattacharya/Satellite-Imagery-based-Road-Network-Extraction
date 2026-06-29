@@ -119,9 +119,13 @@ class RoadExtractionLoss(nn.Module):
         target: torch.Tensor,
         return_components: bool = False,
     ) -> torch.Tensor | Tuple[torch.Tensor, Dict[str, float]]:
-        # logits: raw model outputs (no sigmoid)
-        bce_loss = self.bce(logits, target)
-        cldice_loss = self.cldice(logits, target)
+        # Force float32 computation for numerical stability and to prevent autocast issues.
+        # We disable autocast for loss calculation to avoid half-precision errors inside custom morphology operations.
+        with torch.amp.autocast(device_type=logits.device.type, enabled=False):
+            logits_f32 = logits.float()
+            target_f32 = target.float()
+            bce_loss = self.bce(logits_f32, target_f32)
+            cldice_loss = self.cldice(logits_f32, target_f32)
 
         total_loss = (self.alpha * bce_loss
                       + (1.0 - self.alpha) * cldice_loss)

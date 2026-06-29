@@ -42,8 +42,10 @@ class DeepGlobeDataset(Dataset):
 
         # Neural networks need masks to be strictly 0.0 or 1.0 (Floats)
         # DeepGlobe masks are 0 (background) and 255 (road)
-        mask = mask / 255.0
-        mask = torch.tensor(mask, dtype=torch.float32)
+        if torch.is_tensor(mask):
+            mask = mask.to(dtype=torch.float32) / 255.0
+        else:
+            mask = torch.tensor(mask, dtype=torch.float32) / 255.0
 
         # Add a channel dimension to the mask (from 256x256 to 1x256x256)
         mask = mask.unsqueeze(0)

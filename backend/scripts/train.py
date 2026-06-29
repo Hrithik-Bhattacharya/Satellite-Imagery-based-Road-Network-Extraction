@@ -14,31 +14,19 @@ import sys
 import argparse
 import torch
 from torch.utils.data import DataLoader
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast, GradScaler
 from tqdm import tqdm
 
 # --- Path Fix ---
 repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, repo_root)
 
-# --- Dataset Paths ---
+# --- Dataset Paths (Default CLI options) ---
 TRAIN_IMG_DIR = '/kaggle/working/dataset/train'
 TRAIN_MASK_DIR = '/kaggle/working/dataset/train'
-VAL_IMG_DIR   = '/kaggle/working/dataset/val'
-VAL_MASK_DIR  = '/kaggle/working/dataset/val'
+VAL_IMG_DIR   = '/kaggle/working/dataset/valid'
+VAL_MASK_DIR  = '/kaggle/working/dataset/valid'
 OUTPUT_DIR    = '/kaggle/working/models'
-
-print("--- Validating Paths ---")
-for name, path in [
-    ('Train Images', TRAIN_IMG_DIR),
-    ('Train Masks', TRAIN_MASK_DIR),
-    ('Val Images', VAL_IMG_DIR),
-    ('Val Masks', VAL_MASK_DIR)
-]:
-    if not os.path.exists(path):
-        print(f"⚠️ Warning: Path not found for {name}: {path}")
-    else:
-        print(f"✅ {name} path exists: {path}")
 
 from src.data.dataset import DeepGlobeDataset, get_train_transforms, get_val_transforms
 from src.models.mobilevit_v2 import MobileViT_v2
@@ -59,7 +47,7 @@ def train_one_epoch(epoch, model, dataloader, optimizer, scaler, loss_fn, logger
         optimizer.zero_grad(set_to_none=True)
         
         # AMP Forward Pass
-        with autocast(device_type='cuda'):
+        with autocast(device_type=device.type, enabled=(device.type == 'cuda')):
             logits = model(images)  # raw outputs (no sigmoid)
             loss, components = loss_fn(logits, masks, return_components=True)
             
@@ -95,7 +83,7 @@ def validate(epoch, model, dataloader, loss_fn, device):
     for images, masks in pbar:
         images, masks = images.to(device), masks.to(device)
         
-        with autocast():
+        with autocast(device_type=device.type, enabled=(device.type == 'cuda')):
             preds = model(images)
             loss, components = loss_fn(preds, masks, return_components=True)
             
@@ -112,6 +100,19 @@ def main(args):
     # Setup paths
     os.makedirs(args.output_dir, exist_ok=True)
     
+    # Path validation
+    print("--- Validating Paths ---")
+    for name, path in [
+        ('Train Images', args.train_image_dir),
+        ('Train Masks', args.train_mask_dir),
+        ('Val Images', args.val_image_dir),
+        ('Val Masks', args.val_mask_dir)
+    ]:
+        if not os.path.exists(path):
+            print(f"⚠️ Warning: Path not found for {name}: {path}")
+        else:
+            print(f"✅ {name} path exists: {path}")
+            
     # Initialize W&B Logger
     logger = WandbLogger(
         project="rural-road-extraction", 
@@ -145,7 +146,7 @@ def main(args):
     # 3. Loss & Optimizer
     loss_fn = RoadExtractionLoss(total_epochs=args.epochs, alpha_start=1.0, alpha_end=0.2)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
-    scaler = GradScaler()
+    scaler = GradScaler(enabled=(device.type == 'cuda'))
     
     best_val_cldice = float('inf')
     
@@ -203,7 +204,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=8, help="Batch size")
     parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
     parser.add_argument("--width_mult", type=float, default=1.0, help="Model width multiplier")
-    parser.add_argument("--num_workers", type=int, default=4, help="DataLoader workers")
+    parser.add_argument("--num_workers", type=int, default=min(4, os.cpu_count() or 2), help="DataLoader workers")
     
     args = parser.parse_args()
     main(args)
