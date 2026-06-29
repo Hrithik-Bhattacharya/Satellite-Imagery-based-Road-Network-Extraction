@@ -18,20 +18,16 @@ from torch.cuda.amp import autocast, GradScaler
 from tqdm import tqdm
 
 # --- Path Fix ---
-# Always add repo root so "src" is visible
 repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, repo_root)
 
-# --- Kaggle Dataset Paths ---
+# --- Dataset Paths ---
 TRAIN_IMG_DIR = '/kaggle/working/dataset/train'
-TRAIN_MASK_DIR = '/kaggle/working/dataset/train'  # Update if masks are stored separately
+TRAIN_MASK_DIR = '/kaggle/working/dataset/train'
+VAL_IMG_DIR   = '/kaggle/working/dataset/val'
+VAL_MASK_DIR  = '/kaggle/working/dataset/val'
+OUTPUT_DIR    = '/kaggle/working/models'
 
-VAL_IMG_DIR = '/kaggle/working/dataset/valid'
-VAL_MASK_DIR = '/kaggle/working/dataset/valid'
-
-OUTPUT_DIR = '/kaggle/working/models'
-
-# --- Path Validation ---
 print("--- Validating Paths ---")
 for name, path in [
     ('Train Images', TRAIN_IMG_DIR),
@@ -40,11 +36,9 @@ for name, path in [
     ('Val Masks', VAL_MASK_DIR)
 ]:
     if not os.path.exists(path):
-        print(f"⚠️ Warning: Path not found for {name}: {path}\n"
-              f"Please check the extracted folder structure in /kaggle/working/dataset.")
+        print(f"⚠️ Warning: Path not found for {name}: {path}")
     else:
         print(f"✅ {name} path exists: {path}")
-
 
 from src.data.dataset import DeepGlobeDataset, get_train_transforms, get_val_transforms
 from src.models.mobilevit_v2 import MobileViT_v2
@@ -57,33 +51,29 @@ def train_one_epoch(epoch, model, dataloader, optimizer, scaler, loss_fn, logger
     total_bce = 0.0
     total_cldice = 0.0
     
-    # Update dynamic alpha at the start of the epoch
     current_alpha = loss_fn.update_alpha(epoch)
     
     pbar = tqdm(dataloader, desc=f"Epoch {epoch} [Train]", leave=False)
     for images, masks in pbar:
         images, masks = images.to(device), masks.to(device)
-        
         optimizer.zero_grad(set_to_none=True)
         
         # AMP Forward Pass
-        with autocast():
-            preds = model(images)
-            loss, components = loss_fn(preds, masks, return_components=True)
+        with autocast(device_type='cuda'):
+            logits = model(images)  # raw outputs (no sigmoid)
+            loss, components = loss_fn(logits, masks, return_components=True)
             
         # AMP Backward Pass & Optimizer Step
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
         
-        # Logging & tracking
         total_loss += loss.item()
         total_bce += components['bce_loss']
         total_cldice += components['cldice_loss']
         
         pbar.set_postfix({"Loss": f"{loss.item():.4f}", "Alpha": f"{current_alpha:.2f}"})
         
-        # Log step-level metrics
         logger.log_metrics({
             "train/step_loss": loss.item(),
             "train/step_bce": components['bce_loss'],
