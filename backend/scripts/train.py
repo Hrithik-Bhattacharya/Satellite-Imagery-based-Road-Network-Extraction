@@ -10,11 +10,41 @@ Features:
 """
 
 import os
+import sys
 import argparse
 import torch
 from torch.utils.data import DataLoader
 from torch.cuda.amp import autocast, GradScaler
 from tqdm import tqdm
+
+# --- Path Fix ---
+# Always add repo root so "src" is visible
+repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, repo_root)
+
+# --- Kaggle Dataset Paths ---
+TRAIN_IMG_DIR = '/kaggle/working/dataset/train'
+TRAIN_MASK_DIR = '/kaggle/working/dataset/train'  # Update if masks are stored separately
+
+VAL_IMG_DIR = '/kaggle/working/dataset/valid'
+VAL_MASK_DIR = '/kaggle/working/dataset/valid'
+
+OUTPUT_DIR = '/kaggle/working/models'
+
+# --- Path Validation ---
+print("--- Validating Paths ---")
+for name, path in [
+    ('Train Images', TRAIN_IMG_DIR),
+    ('Train Masks', TRAIN_MASK_DIR),
+    ('Val Images', VAL_IMG_DIR),
+    ('Val Masks', VAL_MASK_DIR)
+]:
+    if not os.path.exists(path):
+        print(f"⚠️ Warning: Path not found for {name}: {path}\n"
+              f"Please check the extracted folder structure in /kaggle/working/dataset.")
+    else:
+        print(f"✅ {name} path exists: {path}")
+
 
 from src.data.dataset import DeepGlobeDataset, get_train_transforms, get_val_transforms
 from src.models.mobilevit_v2 import MobileViT_v2
