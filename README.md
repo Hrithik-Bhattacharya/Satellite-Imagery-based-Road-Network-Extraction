@@ -8,7 +8,7 @@
 
 ---
 
-## 📖 Overview
+## Overview
 
 In developing nations like India, mapping millions of kilometers of rural, unpaved roads under initiatives such as the **Pradhan Mantri Gram Sadak Yojana (PMGSY)** is critical. However, current manual auditing workflows are prohibitively slow and labor-intensive.
 
@@ -19,7 +19,7 @@ Construct an ultra-lightweight **encoder-decoder architecture** using **MobileVi
 
 ---
 
-## ✨ Key Features & Technical Approach
+## Key Features & Technical Approach
 
 ### 1. Backbone Encoder — MobileViT v2
 Replaces the $O(N^2)$ computational complexity of standard Vision Transformers with **localized linear self-attention**. It maintains a global receptive field to "see" past occlusions where CNNs fail, while keeping the parameter footprint ultra-low.
@@ -43,7 +43,7 @@ To combat the severe domain shift of rural environments:
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```text
 .
@@ -70,7 +70,7 @@ To combat the severe domain shift of rural environments:
 
 ---
 
-## 🚀 Quickstart
+## Quickstart
 
 ### 1. Prerequisites
 Clone the repository and install the required dependencies:
@@ -95,7 +95,7 @@ python scripts/export_onnx.py
 
 ---
 
-## 📊 Evaluation Metrics
+## Evaluation Metrics
 
 | Metric | Type | Purpose |
 |---|---|---|
@@ -106,7 +106,7 @@ python scripts/export_onnx.py
 
 ---
 
-## 📚 References
+## References
 
 - **MobileViT:** Light-weight, General-purpose, and Mobile-friendly Vision Transformer (Mehta & Rastegari, 2021)
 - **clDice:** A Novel Topology-Preserving Loss Function for Tubular Structure Segmentation (Shit et al., 2021)
