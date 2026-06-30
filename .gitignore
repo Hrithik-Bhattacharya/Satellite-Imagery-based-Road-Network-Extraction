@@ -104,3 +104,8 @@ datasets/
 runs/
 wandb/
 .DS_Store
+
+# Local Configs
+wandb_local.json
+results/
+data/samples/
