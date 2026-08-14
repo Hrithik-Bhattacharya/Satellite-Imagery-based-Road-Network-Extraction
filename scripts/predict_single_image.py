@@ -14,9 +14,27 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 # Import the model from the local backend package
 from backend.src.models.mobilevit_v2 import MobileViT_v2
 
-def predict_single_image(image_path, model_path="best_model.pth", output_path="prediction_result.png"):
+def predict_single_image(image_path, model_path=None, output_path="prediction_result.png"):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
+
+    # Determine default model path if not explicitly provided.
+    # Preference order: a freshly (correctly) retrained model in models/, then the
+    # last known-good canopy-resilient checkpoint, then legacy root-level locations
+    # for backward compatibility with older checkouts.
+    if model_path is None or model_path == "best_model.pth":
+        candidates = [
+            os.path.join("models", "best_model_v2.pth"),
+            os.path.join("models", "best_model_new.pth"),
+            os.path.join("models", "best_model.pth"),
+            "best_model_new.pth",
+            "best_model_v2.pth",
+            "best_model.pth",
+        ]
+        for candidate in candidates:
+            if os.path.exists(candidate):
+                model_path = candidate
+                break
 
     # 1. Initialize Model and Load Weights
     print(f"Loading model weights from {model_path}...")
@@ -24,13 +42,13 @@ def predict_single_image(image_path, model_path="best_model.pth", output_path="p
     
     try:
         checkpoint = torch.load(model_path, map_location=device)
-        # Check if it's a full checkpoint dict or just weights
-        if 'model_state_dict' in checkpoint:
-            model.load_state_dict(checkpoint['model_state_dict'])
-        else:
-            model.load_state_dict(checkpoint)
+        state_dict = checkpoint['model_state_dict'] if (isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint) else checkpoint
+        model.load_state_dict(state_dict, strict=False)
     except FileNotFoundError:
-        print(f"Error: Could not find {model_path}. Make sure it is in the same directory.")
+        print(f"Error: Could not find {model_path}. Make sure it is in the project directory.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error loading checkpoint {model_path}: {e}")
         sys.exit(1)
         
     model.to(device)
@@ -65,30 +83,22 @@ def predict_single_image(image_path, model_path="best_model.pth", output_path="p
     with torch.no_grad():
         with torch.amp.autocast(device_type=device.type, enabled=(device.type == 'cuda')):
             logits = model(input_tensor)
-            # The model outputs raw logits, so we apply sigmoid to get probabilities [0, 1]
-            probs = torch.sigmoid(logits)
-            # Drop threshold aggressively to pick up very faint signals under dense canopies
-            preds = (probs > 0.15).float()
+            probs = torch.sigmoid(logits).squeeze().cpu().numpy()
 
-    # Move to CPU and remove batch/channel dimensions
-    mask_np = preds.squeeze().cpu().numpy()
+    # --- Hysteresis Thresholding & Enhanced Post-Processing ---
+    from backend.src.utils.graph_postprocess import connect_canopy_gaps, hysteresis_threshold
+    
+    # 1. Hysteresis thresholding to recover weak road probabilities beneath tree foliage
+    mask_hyst = hysteresis_threshold(probs, high_thresh=0.35, low_thresh=0.12)
 
-    # --- Aggressive Post-Processing to Improve Connectivity ---
-    mask_uint8 = (mask_np * 255).astype(np.uint8)
+    # 2. Refined Morphological Closing (bridge minor breaks before noise filtering)
+    kernel_close = np.ones((5, 5), np.uint8)
+    mask_closed = cv2.morphologyEx(mask_hyst, cv2.MORPH_CLOSE, kernel_close, iterations=1)
     
-    # 0. Morphological Opening (Erosion followed by Dilation) to remove tiny isolated noise blobs
-    kernel_open = np.ones((3, 3), np.uint8)
-    mask_opened = cv2.morphologyEx(mask_uint8, cv2.MORPH_OPEN, kernel_open, iterations=1)
-
-    # 1. Heavy Morphological Closing to bridge massive gaps across tree canopies
-    kernel_close = np.ones((15, 15), np.uint8)
-    mask_closed = cv2.morphologyEx(mask_opened, cv2.MORPH_CLOSE, kernel_close, iterations=1)
+    # 3. Multi-Strategy Graph-Based Canopy Gap & T-Junction Completion
+    mask_connected = connect_canopy_gaps(mask_closed, max_gap_dist=220.0, max_angle_deg=65.0, road_width=6)
     
-    # 2. Light Dilation to make the roads visibly continuous and smooth
-    kernel_dilate = np.ones((3, 3), np.uint8)
-    mask_final = cv2.dilate(mask_closed, kernel_dilate, iterations=1)
-    
-    mask_plot = mask_final / 255.0
+    mask_plot = mask_connected / 255.0
 
     # 4. Plot and Save Side-by-Side
     print("Generating visualization plot...")
@@ -108,14 +118,16 @@ def predict_single_image(image_path, model_path="best_model.pth", output_path="p
     plt.axis("off")
 
     plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close()
     print(f"Success! Result saved to {output_path}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test MobileViT_v2 on a single image")
     parser.add_argument("image_path", type=str, help="Path to the input satellite image (e.g. test_image.jpg)")
-    parser.add_argument("--model", type=str, default="best_model.pth", help="Path to best_model.pth")
+    parser.add_argument("--model", type=str, default=None, help="Path to model checkpoint (e.g. best_model_v2.pth)")
     parser.add_argument("--output", type=str, default="prediction_result.png", help="Filename to save the result plot")
     args = parser.parse_args()
     
     predict_single_image(args.image_path, args.model, args.output)
+

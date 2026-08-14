@@ -1,0 +1,18 @@
+# Minimal dependencies for scripts/predict_onnx.py -- the on-device inference path.
+# No PyTorch, no CUDA, no albumentations: this is what actually needs to be installed
+# on the drone companion computer / Jetson / field laptop running the exported .onnx model.
+#
+#   pip install -r backend/requirements-edge.txt
+#
+# Swap the `onnxruntime` line below for a platform-specific build where relevant, e.g.
+#   onnxruntime-gpu        # Jetson / CUDA-capable edge board
+#   onnxruntime-silicon    # Apple Silicon (CoreML EP)
+# Android/iOS native apps use the platform ONNX Runtime Mobile package instead of pip
+# and port preprocess()/postprocess() from predict_onnx.py to Kotlin/Swift.
+
+numpy
+opencv-python-headless
+scipy
+scikit-image   # optional -- connect_canopy_gaps() falls back to a slower pure-OpenCV/ manual
+               # thinning if this isn't installed, but skimage's skeletonize() is faster/cleaner
+onnxruntime

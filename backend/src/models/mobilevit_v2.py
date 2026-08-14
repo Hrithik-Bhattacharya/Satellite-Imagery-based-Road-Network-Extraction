@@ -451,34 +451,47 @@ class MobileViTv2Block(nn.Module):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  Full Model — MobileViT v2  Encoder-Decoder for Road Segmentation
+#  Attention Gate (Skip Connection Attention Gating)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class AttentionGate(nn.Module):
+    """
+    Additive Attention Gate for skip connections (Oktay et al., Attention U-Net).
+    Filters background clutter (rooftops, field boundaries) from skip features
+    before concatenating with upsampled decoder representations.
+    """
+    def __init__(self, gate_channels: int, skip_channels: int, inter_channels: int = None):
+        super().__init__()
+        inter_channels = inter_channels or max(skip_channels // 2, 8)
+        self.W_gate = nn.Sequential(
+            nn.Conv2d(gate_channels, inter_channels, 1, bias=True),
+            nn.BatchNorm2d(inter_channels),
+        )
+        self.W_skip = nn.Sequential(
+            nn.Conv2d(skip_channels, inter_channels, 1, bias=True),
+            nn.BatchNorm2d(inter_channels),
+        )
+        self.psi = nn.Sequential(
+            nn.Conv2d(inter_channels, 1, 1, bias=True),
+            nn.BatchNorm2d(1),
+            nn.Sigmoid(),
+        )
+        self.act = nn.SiLU(inplace=True)
+
+    def forward(self, gate: torch.Tensor, skip: torch.Tensor) -> torch.Tensor:
+        g = self.W_gate(gate)
+        s = self.W_skip(skip)
+        attn = self.psi(self.act(g + s))     # spatial attention mask in [0, 1]
+        return skip * attn
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Full Model — MobileViT v2 Encoder-Decoder for Road Segmentation
 # ═══════════════════════════════════════════════════════════════════════════
 
 class MobileViT_v2(nn.Module):
     """
-    Ultra-lightweight encoder-decoder for binary road segmentation.
-
-    Architecture (at ``width_mult = 1.0``)::
-
-        ┌───────────────────────────────────────────────────────────────┐
-        │  ENCODER                                                     │
-        │  ┌─ Stem:  StripConv(3→32, s=2)         → 32ch  @ 128×128 ─┐│
-        │  │  MV2:   InvRes(32→64, s=2)            → 64ch  @ 64×64   ││
-        │  │  Stage2: MViTv2(64, d=96) + MV2(s=2)  → 96ch  @ 32×32   ││
-        │  │  Stage3: MViTv2(96, d=144) + MV2(s=2) → 128ch @ 16×16   ││
-        │  └─ Bottleneck: MViTv2(128, d=192, L=3)  → 128ch @ 16×16  ─┘│
-        │                                                              │
-        │  DECODER (U-Net skip connections + Strip Convolutions)       │
-        │  ┌─ Up3: cat(↑bottleneck, skip3) → StripConv → 96ch  @32  ──┤
-        │  │  Up2: cat(↑dec3, skip2)       → StripConv → 64ch  @64    │
-        │  │  Up1: cat(↑dec2, skip1)       → StripConv → 32ch  @128   │
-        │  └─ Head: ↑dec1 → 1×1 Conv → Sigmoid     → 1ch   @ 256×256 │
-        └───────────────────────────────────────────────────────────────┘
-
-    Parameters
-    ----------
-    num_classes : Number of output classes (1 for binary road mask).
-    width_mult  : Channel width multiplier (e.g. 0.5 halves all channels).
+    Ultra-lightweight encoder-decoder for binary road segmentation with Attention Gates.
     """
 
     def __init__(self, num_classes: int = 1, width_mult: float = 1.0):
@@ -512,8 +525,13 @@ class MobileViT_v2(nn.Module):
             _c(128), transformer_dim=_c(192), n_transformer_layers=3,
         )
 
+        # ─── ATTENTION GATES FOR SKIPS ──────────────────────────────
+        self.gate3 = AttentionGate(gate_channels=_c(128), skip_channels=_c(96))
+        self.gate2 = AttentionGate(gate_channels=_c(96), skip_channels=_c(64))
+        self.gate1 = AttentionGate(gate_channels=_c(64), skip_channels=_c(32))
+
         # ─── DECODER ────────────────────────────────────────────────
-        # Each stage: bilinear upsample → concat skip → StripConv (Novelty 1)
+        # Each stage: bilinear upsample → concat gated skip → StripConv (Novelty 1)
         self.up3 = nn.Upsample(scale_factor=2, mode="bilinear",
                                align_corners=False)
         self.dec3 = StripConv(_c(128) + _c(96), _c(96))    # 16 → 32
@@ -581,13 +599,22 @@ class MobileViT_v2(nn.Module):
 
         bn = self.bottleneck(e3)       #         (_c(128), 16,  16)
 
-        # ── Decoder with skip connections ──
-        d3 = self.dec3(torch.cat([self.up3(bn), s3], dim=1))  # 32 × 32
-        d2 = self.dec2(torch.cat([self.up2(d3), s2], dim=1))  # 64 × 64
-        d1 = self.dec1(torch.cat([self.up1(d2), s1], dim=1))  # 128 × 128
+        # ── Decoder with attention-gated skip connections ──
+        up3 = self.up3(bn)
+        s3_gated = self.gate3(up3, s3)
+        d3 = self.dec3(torch.cat([up3, s3_gated], dim=1))     # 32 × 32
+
+        up2 = self.up2(d3)
+        s2_gated = self.gate2(up2, s2)
+        d2 = self.dec2(torch.cat([up2, s2_gated], dim=1))     # 64 × 64
+
+        up1 = self.up1(d2)
+        s1_gated = self.gate1(up1, s1)
+        d1 = self.dec1(torch.cat([up1, s1_gated], dim=1))     # 128 × 128
 
         out = self.head(self.up0(d1))                         # 256 × 256
         return out
+
 
     # ── Convenience ────────────────────────────────────────────────────
 

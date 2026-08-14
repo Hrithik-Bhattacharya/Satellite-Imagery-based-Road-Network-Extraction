@@ -109,3 +109,5 @@ wandb/
 wandb_local.json
 results/
 data/samples/
+scratch/
+

@@ -86,31 +86,44 @@ class SoftDiceLoss(nn.Module):
         return (1.0 - dice).mean()
 
 # =====================================================================
-#  RoadExtractionLoss (BCEWithLogits + clDice)
+#  RoadExtractionLoss (BCEWithLogits + clDice with pos_weight & decay)
 # =====================================================================
 
 class RoadExtractionLoss(nn.Module):
     def __init__(
         self,
         total_epochs: int,
-        alpha_start: float = 1.0,
-        alpha_end: float = 0.2,
+        alpha_start: float = 0.5,
+        alpha_end: float = 0.15,
+        dice_weight: float = 0.35,
         num_iter: int = 10,
         smooth: float = 1.0,
+        pos_weight: float = 2.0,
+        decay_power: float = 0.5,
+        alpha_decay_epochs: int | None = None,
     ):
         super().__init__()
         self.total_epochs = max(total_epochs, 1)
+        self.decay_epochs = max(alpha_decay_epochs or total_epochs, 1)
         self.alpha_start = alpha_start
         self.alpha_end = alpha_end
         self.alpha = alpha_start
+        self.dice_weight = dice_weight
+        self.decay_power = decay_power
 
-        # FIX: Use BCEWithLogitsLoss instead of BCELoss
-        self.bce = nn.BCEWithLogitsLoss()
+        pw_tensor = torch.tensor([pos_weight]) if isinstance(pos_weight, (int, float)) else pos_weight
+        self.bce = nn.BCEWithLogitsLoss(pos_weight=pw_tensor)
+        self.dice = SoftDiceLoss(smooth=smooth)
         self.cldice = SoftClDiceLoss(num_iter=num_iter, smooth=smooth)
 
+    def get_alpha(self) -> float:
+        return self.alpha
+
     def update_alpha(self, epoch: int) -> float:
-        decay = (self.alpha_start - self.alpha_end) * epoch / self.total_epochs
-        self.alpha = max(self.alpha_end, self.alpha_start - decay)
+        # Non-linear decay decoupled from total epochs: reaches alpha_end by decay_epochs
+        frac = min(epoch / self.decay_epochs, 1.0) ** self.decay_power
+        self.alpha = self.alpha_start - (self.alpha_start - self.alpha_end) * frac
+        self.alpha = max(self.alpha_end, self.alpha)
         return self.alpha
 
     def forward(
@@ -119,24 +132,50 @@ class RoadExtractionLoss(nn.Module):
         target: torch.Tensor,
         return_components: bool = False,
     ) -> torch.Tensor | Tuple[torch.Tensor, Dict[str, float]]:
+        # Ensure pos_weight is on the same device as logits
+        if self.bce.pos_weight is not None and self.bce.pos_weight.device != logits.device:
+            self.bce.pos_weight = self.bce.pos_weight.to(logits.device)
+
         # Force float32 computation for numerical stability and to prevent autocast issues.
-        # We disable autocast for loss calculation to avoid half-precision errors inside custom morphology operations.
         with torch.amp.autocast(device_type=logits.device.type, enabled=False):
             logits_f32 = logits.float()
             target_f32 = target.float()
             bce_loss = self.bce(logits_f32, target_f32)
+            dice_loss = self.dice(logits_f32, target_f32)
             cldice_loss = self.cldice(logits_f32, target_f32)
 
-        total_loss = (self.alpha * bce_loss
-                      + (1.0 - self.alpha) * cldice_loss)
+        cldice_w = max(0.0, 1.0 - self.alpha - self.dice_weight)
+        total_loss = self.alpha * bce_loss + self.dice_weight * dice_loss + cldice_w * cldice_loss
 
         if return_components:
             components = {
                 "total_loss": total_loss.item(),
                 "bce_loss": bce_loss.item(),
+                "dice_loss": dice_loss.item(),
                 "cldice_loss": cldice_loss.item(),
                 "alpha": self.alpha,
             }
             return total_loss, components
 
         return total_loss
+
+
+# =====================================================================
+#  Fragmentation Metric (Connected Component Ratio)
+# =====================================================================
+
+def avg_component_count(pred_masks: torch.Tensor, threshold: float = 0.5) -> float:
+    """
+    Computes average number of connected components in predictions.
+    Lower count indicates continuous road networks; high count indicates fragmentation.
+    """
+    from scipy import ndimage
+    counts = []
+    preds_np = (torch.sigmoid(pred_masks) > threshold).cpu().numpy().astype("uint8")
+    for m in preds_np:
+        if m.ndim == 3:
+            m = m[0]
+        _, n = ndimage.label(m)
+        counts.append(n)
+    return float(sum(counts) / max(len(counts), 1))
+

@@ -27,7 +27,7 @@ Replaces the $O(N^2)$ computational complexity of standard Vision Transformers w
 | Model | Parameters | Size |
 |---|---|---|
 | Baseline U-Net | 31,037,633 | Heavy |
-| **MobileViT v2 (ours)** | **478,849** | **Ultra-lightweight (478K)** |
+| **MobileViT v2 (ours)** | **1,604,657** | **Ultra-lightweight (1.6M)** |
 
 ### 2. Topology-Preserving Loss — clDice
 Replaces standard pixel-wise IoU/BCE losses with a **graph-theoretic topology-preserving loss**. It computes overlap explicitly on the morphological skeleton of predicted and ground-truth road centerlines:
@@ -52,16 +52,24 @@ To combat the severe domain shift of rural environments:
 │   └── kaggle_runner.ipynb         # Cloud execution configurations
 │
 ├── scripts/                        # Standalone execution scripts
-│   ├── predict_single_image.py     # High-res inference with topological post-processing
-│   ├── test_model.py               # Forward pass + parameter benchmark
-│   └── export_onnx.py              # Edge-device ONNX compilation
+│   ├── predict_single_image.py     # PyTorch high-res inference with topological post-processing
+│   └── predict_onnx.py             # On-device inference via ONNX Runtime (no PyTorch/CUDA needed)
 │
-├── backend/                        # ML source code and architecture definitions
+├── backend/                        # ML source code, training, and deployment tooling
+│   ├── requirements.txt            # Full training/dev environment
+│   ├── requirements-edge.txt       # Minimal on-device inference environment (for predict_onnx.py)
+│   ├── scripts/
+│   │   ├── train.py                # Training loop (IoU-based, collapse-gated checkpointing)
+│   │   ├── export_onnx.py          # Trained checkpoint -> ONNX, with parity verification
+│   │   ├── evaluate.py             # Held-out evaluation
+│   │   └── test_model.py           # Forward pass + parameter benchmark
 │   └── src/
 │       ├── models/                 # MobileViT v2 and U-Net architectures
 │       ├── data/                   # Data ingestion and weak label processing
-│       └── utils/                  # Loss functions (clDice, BCE) and metrics
+│       └── utils/                  # Loss functions (clDice, BCE), metrics, postprocessing
 │
+├── models/                         # Trained checkpoints (best_model_new.pth, best_model_v2.pth)
+│   └── archive/                    # Retired/collapsed checkpoints kept for reference
 ├── data/samples/                   # High-resolution satellite testing images
 ├── results/                        # Generated output visualizations
 ├── docs/                           # Research papers, progress reports, proposals
@@ -82,16 +90,39 @@ pip install -r backend/requirements.txt
 You can test the topology-aware extraction on any satellite image. The script automatically handles scale mismatches and applies aggressive morphological gap-closing.
 ```bash
 python scripts/predict_single_image.py data/samples/100034_sat.jpg \
-       --model best_model_new.pth \
+       --model models/best_model_new.pth \
        --output results/prediction_100034.png
 ```
 
 ### 3. Export to ONNX (Edge Deployment)
-Compile the ultra-lightweight PyTorch model into an ONNX graph for deployment on edge devices like drones or mobile mappers:
+Compile a trained checkpoint into an ONNX graph for deployment on edge devices like drones or
+mobile mappers. Sigmoid is baked into the graph, so ONNX Runtime output is already a `[0, 1]`
+road-probability map, and height/width are dynamic (the model isn't limited to 256x256 tiles):
 ```bash
-python scripts/export_onnx.py
-# → Outputs highly optimized edge model (0.38 MB)
+python backend/scripts/export_onnx.py \
+       --checkpoint models/best_model_new.pth \
+       --output models/mobilevit_v2.onnx
+# → models/mobilevit_v2.onnx (~0.8 MB), with a PyTorch <-> ONNX Runtime parity check printed at the end
 ```
+
+### 4. Run Inference On-Device (no PyTorch required)
+`scripts/predict_onnx.py` is the on-device reference implementation: ONNX Runtime + OpenCV +
+NumPy + SciPy only (see `backend/requirements-edge.txt`) -- no PyTorch/CUDA/albumentations, so it's
+what actually ships to a drone companion computer, Jetson-class board, or field laptop. Same
+hysteresis-threshold + canopy-gap-bridging postprocessing as `predict_single_image.py`:
+```bash
+pip install -r backend/requirements-edge.txt   # on the target device
+python scripts/predict_onnx.py data/samples/100034_sat.jpg \
+       --model models/mobilevit_v2.onnx \
+       --output results/prediction_100034_onnx.png
+```
+It auto-picks the best available ONNX Runtime execution provider (CUDA/TensorRT on a Jetson,
+CoreML on Apple hardware, NNAPI on Android, else CPU) and prints inference latency and the
+positive-pixel-fraction canary so a collapsed/miscalibrated export is obvious immediately rather
+than silently shipping. Measured on a 1024x1024 tile on CPU: ~550-700 ms/tile. For a native
+Android/iOS app rather than a Python-capable edge board, port `preprocess()`/`postprocess()` from
+this script to Kotlin/Swift against the platform's ONNX Runtime Mobile package -- the `.onnx` file
+itself is unchanged either way.
 
 ---
 

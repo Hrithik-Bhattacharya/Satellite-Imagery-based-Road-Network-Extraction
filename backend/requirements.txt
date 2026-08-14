@@ -21,3 +21,8 @@ wandb
 rasterio
 geopandas
 kaggle
+
+# ONNX export (training/dev machine only -- edge deployment uses requirements-edge.txt instead)
+onnx
+onnxscript
+onnxruntime
