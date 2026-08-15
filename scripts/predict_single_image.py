@@ -14,7 +14,32 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 # Import the model from the local backend package
 from backend.src.models.mobilevit_v2 import MobileViT_v2
 
-def predict_single_image(image_path, model_path=None, output_path="prediction_result.png"):
+
+def predict_tta(model, input_tensor, device):
+    """
+    Test-time augmentation: averages predictions over the original tile plus its
+    horizontal, vertical, and both-axis flips (un-flipped back before averaging).
+    Cheap (4x forward passes, no retraining) and generally reduces spurious
+    single-orientation false positives (e.g. field-boundary lines that only look
+    road-like from one angle) since a true road stays road-shaped under any flip.
+    """
+    variants = [
+        (lambda x: x, lambda p: p),                                                    # identity
+        (lambda x: torch.flip(x, dims=[3]), lambda p: torch.flip(p, dims=[3])),          # horizontal
+        (lambda x: torch.flip(x, dims=[2]), lambda p: torch.flip(p, dims=[2])),          # vertical
+        (lambda x: torch.flip(x, dims=[2, 3]), lambda p: torch.flip(p, dims=[2, 3])),    # both
+    ]
+    probs_sum = None
+    with torch.no_grad():
+        with torch.amp.autocast(device_type=device.type, enabled=(device.type == 'cuda')):
+            for forward_fn, inverse_fn in variants:
+                logits = model(forward_fn(input_tensor))
+                probs = inverse_fn(torch.sigmoid(logits))
+                probs_sum = probs if probs_sum is None else probs_sum + probs
+    return (probs_sum / len(variants)).squeeze().cpu().numpy()
+
+
+def predict_single_image(image_path, model_path=None, output_path="prediction_result.png", use_tta=True):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
@@ -78,12 +103,16 @@ def predict_single_image(image_path, model_path=None, output_path="prediction_re
     transformed = transform(image=image)
     input_tensor = transformed["image"].unsqueeze(0).to(device)
 
-    # 3. Run Inference
-    print("Running inference...")
-    with torch.no_grad():
-        with torch.amp.autocast(device_type=device.type, enabled=(device.type == 'cuda')):
-            logits = model(input_tensor)
-            probs = torch.sigmoid(logits).squeeze().cpu().numpy()
+    # 3. Run Inference (with optional test-time augmentation)
+    if use_tta:
+        print("Running inference (4-way flip TTA)...")
+        probs = predict_tta(model, input_tensor, device)
+    else:
+        print("Running inference...")
+        with torch.no_grad():
+            with torch.amp.autocast(device_type=device.type, enabled=(device.type == 'cuda')):
+                logits = model(input_tensor)
+                probs = torch.sigmoid(logits).squeeze().cpu().numpy()
 
     # --- Hysteresis Thresholding & Enhanced Post-Processing ---
     from backend.src.utils.graph_postprocess import connect_canopy_gaps, hysteresis_threshold
@@ -127,7 +156,9 @@ if __name__ == "__main__":
     parser.add_argument("image_path", type=str, help="Path to the input satellite image (e.g. test_image.jpg)")
     parser.add_argument("--model", type=str, default=None, help="Path to model checkpoint (e.g. best_model_v2.pth)")
     parser.add_argument("--output", type=str, default="prediction_result.png", help="Filename to save the result plot")
+    parser.add_argument("--no-tta", dest="use_tta", action="store_false",
+                         help="Disable 4-way flip test-time augmentation (on by default; costs 4x forward passes)")
     args = parser.parse_args()
-    
-    predict_single_image(args.image_path, args.model, args.output)
+
+    predict_single_image(args.image_path, args.model, args.output, args.use_tta)
 

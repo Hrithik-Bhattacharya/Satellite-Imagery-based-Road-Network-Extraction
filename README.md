@@ -90,9 +90,11 @@ pip install -r backend/requirements.txt
 You can test the topology-aware extraction on any satellite image. The script automatically handles scale mismatches and applies aggressive morphological gap-closing.
 ```bash
 python scripts/predict_single_image.py data/samples/100034_sat.jpg \
-       --model models/best_model_new.pth \
+       --model models/best_model_v2.pth \
        --output results/prediction_100034.png
 ```
+(`predict_single_image.py` auto-detects the best available checkpoint in `models/` if `--model` is
+omitted, preferring `best_model_v2.pth` over the older `best_model_new.pth`.)
 
 ### 3. Export to ONNX (Edge Deployment)
 Compile a trained checkpoint into an ONNX graph for deployment on edge devices like drones or
@@ -100,7 +102,7 @@ mobile mappers. Sigmoid is baked into the graph, so ONNX Runtime output is alrea
 road-probability map, and height/width are dynamic (the model isn't limited to 256x256 tiles):
 ```bash
 python backend/scripts/export_onnx.py \
-       --checkpoint models/best_model_new.pth \
+       --checkpoint models/best_model_v2.pth \
        --output models/mobilevit_v2.onnx
 # → models/mobilevit_v2.onnx (~0.8 MB), with a PyTorch <-> ONNX Runtime parity check printed at the end
 ```

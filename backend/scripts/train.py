@@ -330,7 +330,7 @@ if __name__ == "__main__":
     parser.add_argument("--alpha_end", type=float, default=0.15, help="Ending alpha floor for loss weighting")
     parser.add_argument("--decay_power", type=float, default=0.5, help="Exponent for front-loaded alpha decay")
     parser.add_argument("--alpha_decay_epochs", type=int, default=40, help="Fixed epoch count for alpha decay curve")
-    parser.add_argument("--patience", type=int, default=20, help="Patience epochs for early stopping on val_iou")
+    parser.add_argument("--patience", type=int, default=35, help="Patience epochs for early stopping on val_iou")
     parser.add_argument("--max_pos_frac", type=float, default=0.20, help="Hard collapse gate: never checkpoint if predicted positive pixel fraction exceeds this")
     parser.add_argument("--grad_clip_norm", type=float, default=1.0, help="Max gradient norm (0 disables clipping)")
     parser.add_argument("--init_from", type=str, default=None, help="Optional checkpoint path to warm-start weights from (partial load, strict=False)")

@@ -59,6 +59,23 @@ def pick_providers(requested: str | None) -> list:
     return [p for p in preferred_order if p in available] or ["CPUExecutionProvider"]
 
 
+def predict_tta(session: ort.InferenceSession, input_name: str, output_name: str, input_tensor: np.ndarray) -> np.ndarray:
+    """Same 4-way flip TTA as scripts/predict_single_image.py's predict_tta(), reimplemented
+    in plain NumPy since this script has no PyTorch dependency by design."""
+    variants = [
+        (lambda x: x, lambda p: p),                            # identity
+        (lambda x: x[:, :, :, ::-1], lambda p: p[:, :, :, ::-1]),   # horizontal
+        (lambda x: x[:, :, ::-1, :], lambda p: p[:, :, ::-1, :]),   # vertical
+        (lambda x: x[:, :, ::-1, ::-1], lambda p: p[:, :, ::-1, ::-1]),  # both
+    ]
+    probs_sum = None
+    for forward_fn, inverse_fn in variants:
+        variant_input = np.ascontiguousarray(forward_fn(input_tensor))
+        probs = inverse_fn(session.run([output_name], {input_name: variant_input})[0])
+        probs_sum = probs if probs_sum is None else probs_sum + probs
+    return probs_sum / len(variants)
+
+
 def preprocess(image_bgr: np.ndarray) -> tuple[np.ndarray, int, int]:
     image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
     h, w = image_rgb.shape[:2]
@@ -96,6 +113,7 @@ def predict(
     max_gap_dist: float,
     max_angle_deg: float,
     road_width: int,
+    use_tta: bool,
 ) -> None:
     if not os.path.exists(model_path):
         print(f"Error: ONNX model not found at {model_path}. Export one first with "
@@ -116,7 +134,10 @@ def predict(
     input_tensor, h, w = preprocess(image_bgr)
 
     t0 = time.perf_counter()
-    probs = session.run([output_name], {input_name: input_tensor})[0]
+    if use_tta:
+        probs = predict_tta(session, input_name, output_name, input_tensor)
+    else:
+        probs = session.run([output_name], {input_name: input_tensor})[0]
     latency_ms = (time.perf_counter() - t0) * 1000
     probs = probs.squeeze()
 
@@ -146,9 +167,12 @@ if __name__ == "__main__":
     parser.add_argument("--max_gap_dist", type=float, default=220.0, help="Max canopy-gap bridging distance (px)")
     parser.add_argument("--max_angle_deg", type=float, default=65.0, help="Max angle deviation for gap bridging")
     parser.add_argument("--road_width", type=int, default=6, help="Stroke width for bridged gap segments (px)")
+    parser.add_argument("--no-tta", dest="use_tta", action="store_false",
+                         help="Disable 4-way flip test-time augmentation (on by default; costs 4x forward passes)")
     args = parser.parse_args()
 
     predict(
         args.image_path, args.model, args.output, args.provider,
         args.high_thresh, args.low_thresh, args.max_gap_dist, args.max_angle_deg, args.road_width,
+        args.use_tta,
     )
