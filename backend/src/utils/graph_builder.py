@@ -42,8 +42,8 @@ def build_graph_from_skeleton(skel):
     for p in pts:
         y, x = p
         cnt = 0
-        for ny, nx in _neighbors(y, x, (H, W)):
-            if (ny, nx) in pts:
+        for nb_y, nb_x in _neighbors(y, x, (H, W)):
+            if (nb_y, nb_x) in pts:
                 cnt += 1
         degree[p] = cnt
 
