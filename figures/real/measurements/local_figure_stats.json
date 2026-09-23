@@ -1,0 +1,37 @@
+{
+  "pipeline_stages": {
+    "tile": "117991",
+    "bridged_pixels": 5076,
+    "components_before": 9,
+    "components_after": 3
+  },
+  "collapse": {
+    "100034": {
+      "collapsed_pos_frac": 0.8934097290039062,
+      "final_pos_frac": 0.013784408569335938
+    },
+    "115714": {
+      "collapsed_pos_frac": 0.9045000076293945,
+      "final_pos_frac": 0.010747909545898438
+    },
+    "collapsed_all_tiles_pos_frac": 0.8094761371612549,
+    "final_all_tiles_pos_frac": 0.03235888481140137
+  },
+  "resolution": {
+    "117991": {
+      "native_pos_frac": 0.015561103820800781,
+      "resized_pos_frac": 0.0,
+      "agreement_iou": 0.0
+    },
+    "115714": {
+      "native_pos_frac": 0.010747909545898438,
+      "resized_pos_frac": 0.0,
+      "agreement_iou": 0.0
+    },
+    "100034": {
+      "native_pos_frac": 0.013784408569335938,
+      "resized_pos_frac": 0.02899169921875,
+      "agreement_iou": 0.33018979833926454
+    }
+  }
+}

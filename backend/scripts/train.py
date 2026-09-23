@@ -210,7 +210,9 @@ def main(args):
         pos_weight = estimate_pos_weight(train_dataset, max_pos_weight=args.max_pos_weight)
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=True)
+    # Validation runs on full native-resolution tiles (16x the pixels of a training
+    # crop), so it uses a proportionally smaller batch to stay within GPU memory.
+    val_loader = DataLoader(val_dataset, batch_size=max(1, args.batch_size // 4), shuffle=False, num_workers=args.num_workers, pin_memory=True)
 
     # 2. Model
     model = MobileViT_v2(num_classes=1, width_mult=args.width_mult).to(device)

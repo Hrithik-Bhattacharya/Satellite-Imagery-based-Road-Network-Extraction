@@ -137,6 +137,23 @@ itself is unchanged either way.
 | **IoU / F1** | Pixel-level | Baseline spatial segmentation accuracy |
 | **FPS / Latency** | Deployment | Edge-device real-world inference speed |
 
+### Reproducing the paper figures and presentation
+
+All figures are generated from trained checkpoints, real imagery, real logs or hardware
+measurements — see [`figures/real/README.md`](figures/real/README.md).
+
+```bash
+python scripts/paper_figures/benchmark_efficiency.py   # compute cost on this machine
+python scripts/paper_figures/local_figures.py          # qualitative + training-log figures
+```
+Accuracy against ground truth runs on Kaggle: upload `notebooks/evaluate_for_paper.ipynb`
+(generated from `scripts/paper_figures/kaggle_eval.py` by `build_eval_notebook.py`), attach
+the checkpoints, run all, and unzip `paper_results.zip` into `figures/real/kaggle/`. Then:
+```bash
+python scripts/presentation/deck_assets.py
+python scripts/presentation/build_deck.py              # docs/presentation/Rural_Road_Extraction.pptx
+```
+
 ---
 
 ## References

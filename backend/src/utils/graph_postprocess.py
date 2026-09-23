@@ -75,13 +75,19 @@ def connect_canopy_gaps(
     binary_mask: np.ndarray,
     max_gap_dist: float = 220.0,
     max_angle_deg: float = 65.0,
-    road_width: int = 6
+    road_width: int = 6,
+    border_margin: int = 16,
 ) -> np.ndarray:
     """
     Multi-Strategy Graph-Based Post-Processing:
     1. Extracts topological 1-pixel skeleton using scikit-image skeletonize (or cv2.ximgproc as fallback).
     2. Bridges facing dead-end endpoints across wide tree canopy gaps (up to max_gap_dist).
     3. Connects dead-end endpoints to nearby main road segments (T-junction completion).
+
+    Endpoints within ``border_margin`` px of the tile edge are ignored: there a road simply
+    leaves the tile, it is not interrupted. Treating those as dead ends made the bridging
+    draw spurious straight "roads" along the tile border between neighbouring exits.
+    ``border_margin=0`` reproduces the original behaviour.
     """
     mask_out = binary_mask.copy()
     h, w = mask_out.shape
@@ -108,7 +114,8 @@ def connect_canopy_gaps(
                 done = True
         skel = skel_acc
 
-    endpoints = find_skeleton_endpoints(skel)
+    endpoints = [(y, x, v) for y, x, v in find_skeleton_endpoints(skel)
+                 if border_margin <= y < h - border_margin and border_margin <= x < w - border_margin]
     n_pts = len(endpoints)
     if n_pts == 0:
         return mask_out

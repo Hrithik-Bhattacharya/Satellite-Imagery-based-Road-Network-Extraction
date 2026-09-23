@@ -1,0 +1,69 @@
+{
+  "tile": 1024,
+  "cpu": "Intel(R) Core(TM) i5-1035G4 CPU @ 1.10GHz",
+  "torch_threads": 4,
+  "torch": "2.13.0+cpu",
+  "models": {
+    "Proposed": {
+      "latency_ms": 1887.7861000000848,
+      "latency_min_ms": 1824.4099000003189,
+      "latency_max_ms": 1950.2940999955172,
+      "runs": 7,
+      "params": 1604657,
+      "gflops": 60.7256576,
+      "weights_mb_fp32": 6.121280670166016,
+      "citation": "this work"
+    },
+    "LR-ASPP-MBv3": {
+      "latency_ms": 487.66730000352254,
+      "latency_min_ms": 480.61150000285124,
+      "latency_max_ms": 497.43400000443216,
+      "runs": 7,
+      "params": 3218138,
+      "gflops": 15.677439744,
+      "weights_mb_fp32": 12.276222229003906,
+      "citation": "Howard et al., 2019"
+    },
+    "DeepLabV3-MBv3": {
+      "latency_ms": 997.9148999991594,
+      "latency_min_ms": 966.6228999994928,
+      "latency_max_ms": 1019.5817999992869,
+      "runs": 7,
+      "params": 11020337,
+      "gflops": 78.5552832,
+      "weights_mb_fp32": 42.039249420166016,
+      "citation": "Chen et al., 2017"
+    },
+    "D-LinkNet34": {
+      "latency_ms": 2477.252700002282,
+      "latency_min_ms": 2366.404300002614,
+      "latency_max_ms": 2867.511199998262,
+      "runs": 7,
+      "params": 31096129,
+      "gflops": 212.634435584,
+      "weights_mb_fp32": 118.62231826782227,
+      "citation": "Zhou et al., 2018 (DeepGlobe winner)"
+    },
+    "U-Net": {
+      "latency_ms": 14749.201600003289,
+      "latency_min_ms": 14683.648799997172,
+      "latency_max_ms": 14929.672899997968,
+      "runs": 3,
+      "params": 31037633,
+      "gflops": 1541.356388352,
+      "weights_mb_fp32": 118.39917373657227,
+      "citation": "Ronneberger et al., 2015",
+      "flops_note": "counted at 256^2 and scaled x16 (fully convolutional)",
+      "latency_note": "1024^2 tile timed as 4 sequential 512^2 crops (full-tile pass exceeds free RAM)"
+    }
+  },
+  "onnx": {
+    "latency_ms": 905.4370000012568,
+    "latency_min_ms": 883.5190999961924,
+    "latency_max_ms": 936.2354999975651,
+    "runs": 7,
+    "file_mb_total": 6.936244010925293,
+    "graph_file_mb": 0.8308095932006836,
+    "ort_version": "1.25.1"
+  }
+}

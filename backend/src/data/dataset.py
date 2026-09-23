@@ -95,7 +95,10 @@ class CanopyShadowDropout(A.ImageOnlyTransform):
         always_apply: bool = False,
         p: float = 0.5,
     ):
-        super().__init__(always_apply, p)
+        # Keyword, not positional: albumentations 2.x dropped `always_apply`, so the old
+        # positional call super().__init__(always_apply, p) bound always_apply=False to
+        # `p`, silently disabling this transform (p=0.0) on 2.x installs.
+        super().__init__(p=1.0 if always_apply else p)
         self.max_holes = max_holes
         self.max_size = max_size
         self.min_size = min_size
@@ -147,10 +150,18 @@ def get_train_transforms():
 
 
 def get_val_transforms():
-    """Validation pipeline only normalizes and converts to tensor. No random crops."""
+    """
+    Validation pipeline only normalizes and converts to tensor -- at NATIVE resolution.
+
+    Training sees native-resolution 256x256 crops, and inference runs on full native
+    tiles, so validation must too. The previous A.Resize(256, 256) shrank each 1024x1024
+    tile 4x, showing the model roads 4x thinner than anything it trained on: on real
+    tiles it then predicted no road at all on some images, which both deflated the
+    logged val IoU and drove checkpoint selection at the wrong scale.
+    DeepGlobe tiles are 1024x1024 (divisible by 32), so no resize is needed.
+    """
     return A.Compose(
         [
-            A.Resize(height=256, width=256),
             A.Normalize(
                 mean=[0.485, 0.456, 0.406],
                 std=[0.229, 0.224, 0.225],

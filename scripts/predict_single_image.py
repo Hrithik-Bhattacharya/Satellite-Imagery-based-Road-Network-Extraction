@@ -12,7 +12,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Import the model from the local backend package
-from backend.src.models.mobilevit_v2 import MobileViT_v2
+from backend.src.models.mobilevit_v2 import load_mobilevit_checkpoint
 
 
 def predict_tta(model, input_tensor, device):
@@ -61,14 +61,10 @@ def predict_single_image(image_path, model_path=None, output_path="prediction_re
                 model_path = candidate
                 break
 
-    # 1. Initialize Model and Load Weights
+    # 1. Initialize Model and Load Weights (architecture detected from the checkpoint)
     print(f"Loading model weights from {model_path}...")
-    model = MobileViT_v2(num_classes=1, width_mult=1.0)
-    
     try:
-        checkpoint = torch.load(model_path, map_location=device)
-        state_dict = checkpoint['model_state_dict'] if (isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint) else checkpoint
-        model.load_state_dict(state_dict, strict=False)
+        model, _ = load_mobilevit_checkpoint(model_path, device=device)
     except FileNotFoundError:
         print(f"Error: Could not find {model_path}. Make sure it is in the project directory.")
         sys.exit(1)

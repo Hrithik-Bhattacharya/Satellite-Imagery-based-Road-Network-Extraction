@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from src.models import MobileViT_v2
+from src.models.mobilevit_v2 import load_mobilevit_checkpoint
 
 
 class SigmoidWrapper(nn.Module):
@@ -45,19 +45,15 @@ def find_default_checkpoint(repo_root: str) -> str:
     return candidates[1]  # best_model_new.pth, used for the error message if nothing found
 
 
-def load_checkpoint(model: nn.Module, checkpoint_path: str) -> None:
+def load_checkpoint(checkpoint_path: str, width_mult: float) -> nn.Module:
     if not os.path.exists(checkpoint_path):
         raise FileNotFoundError(
             f"Checkpoint not found: {checkpoint_path}\n"
             f"Pass --checkpoint pointing at a trained .pth file (see models/)."
         )
-    checkpoint = torch.load(checkpoint_path, map_location="cpu")
-    state_dict = checkpoint["model_state_dict"] if (isinstance(checkpoint, dict) and "model_state_dict" in checkpoint) else checkpoint
-    missing, unexpected = model.load_state_dict(state_dict, strict=False)
-    if missing:
-        print(f"    Missing (randomly initialized): {missing}")
-    if unexpected:
-        print(f"    Unexpected (ignored): {unexpected}")
+    model, _ = load_mobilevit_checkpoint(checkpoint_path, device="cpu", width_mult=width_mult)
+    print(f"    Architecture: attention_gates={model.attention_gates}, params={model.num_parameters:,}")
+    return model
 
 
 def verify_parity(torch_model: nn.Module, onnx_path: str, dummy_input: torch.Tensor) -> float:
@@ -89,10 +85,8 @@ def export_to_onnx(
 
     # 1. Initialize model and load TRAINED weights (width_mult must match training --
     #    every checkpoint in this repo was trained at width_mult=1.0).
-    base_model = MobileViT_v2(num_classes=1, width_mult=width_mult)
     print(f"Loading trained weights from {checkpoint_path}...")
-    load_checkpoint(base_model, checkpoint_path)
-    base_model.eval()
+    base_model = load_checkpoint(checkpoint_path, width_mult)
 
     model = SigmoidWrapper(base_model)
     model.eval()

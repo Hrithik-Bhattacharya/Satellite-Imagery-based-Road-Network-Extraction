@@ -1,0 +1,22 @@
+{
+  "checkpoint": "models/best_model_v2.pth",
+  "onnx": "models/mobilevit_v2.onnx",
+  "runs": [
+    {
+      "height": 256,
+      "width": 256,
+      "max_abs_diff": 1.392048432080628e-07
+    },
+    {
+      "height": 256,
+      "width": 384,
+      "max_abs_diff": 1.3736351434090466e-07
+    },
+    {
+      "height": 512,
+      "width": 512,
+      "max_abs_diff": 1.757772594146445e-07
+    }
+  ],
+  "max_abs_diff": 1.757772594146445e-07
+}

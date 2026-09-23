@@ -494,8 +494,14 @@ class MobileViT_v2(nn.Module):
     Ultra-lightweight encoder-decoder for binary road segmentation with Attention Gates.
     """
 
-    def __init__(self, num_classes: int = 1, width_mult: float = 1.0):
+    def __init__(self, num_classes: int = 1, width_mult: float = 1.0,
+                 attention_gates: bool = True):
         super().__init__()
+        # attention_gates=False reproduces the original (June) architecture that
+        # best_model.pth / best_model_new.pth were trained with -- plain U-Net-style
+        # skip concatenation. Loading those checkpoints into the gated model with
+        # strict=False silently leaves the gates randomly initialized.
+        self.attention_gates = attention_gates
 
         def _c(channels: int) -> int:
             """Scale channel count by width multiplier, round to nearest 8."""
@@ -526,9 +532,10 @@ class MobileViT_v2(nn.Module):
         )
 
         # ─── ATTENTION GATES FOR SKIPS ──────────────────────────────
-        self.gate3 = AttentionGate(gate_channels=_c(128), skip_channels=_c(96))
-        self.gate2 = AttentionGate(gate_channels=_c(96), skip_channels=_c(64))
-        self.gate1 = AttentionGate(gate_channels=_c(64), skip_channels=_c(32))
+        if attention_gates:
+            self.gate3 = AttentionGate(gate_channels=_c(128), skip_channels=_c(96))
+            self.gate2 = AttentionGate(gate_channels=_c(96), skip_channels=_c(64))
+            self.gate1 = AttentionGate(gate_channels=_c(64), skip_channels=_c(32))
 
         # ─── DECODER ────────────────────────────────────────────────
         # Each stage: bilinear upsample → concat gated skip → StripConv (Novelty 1)
@@ -599,18 +606,21 @@ class MobileViT_v2(nn.Module):
 
         bn = self.bottleneck(e3)       #         (_c(128), 16,  16)
 
-        # ── Decoder with attention-gated skip connections ──
+        # ── Decoder with (optionally attention-gated) skip connections ──
         up3 = self.up3(bn)
-        s3_gated = self.gate3(up3, s3)
-        d3 = self.dec3(torch.cat([up3, s3_gated], dim=1))     # 32 × 32
+        if self.attention_gates:
+            s3 = self.gate3(up3, s3)
+        d3 = self.dec3(torch.cat([up3, s3], dim=1))           # 32 × 32
 
         up2 = self.up2(d3)
-        s2_gated = self.gate2(up2, s2)
-        d2 = self.dec2(torch.cat([up2, s2_gated], dim=1))     # 64 × 64
+        if self.attention_gates:
+            s2 = self.gate2(up2, s2)
+        d2 = self.dec2(torch.cat([up2, s2], dim=1))           # 64 × 64
 
         up1 = self.up1(d2)
-        s1_gated = self.gate1(up1, s1)
-        d1 = self.dec1(torch.cat([up1, s1_gated], dim=1))     # 128 × 128
+        if self.attention_gates:
+            s1 = self.gate1(up1, s1)
+        d1 = self.dec1(torch.cat([up1, s1], dim=1))           # 128 × 128
 
         out = self.head(self.up0(d1))                         # 256 × 256
         return out
@@ -622,6 +632,28 @@ class MobileViT_v2(nn.Module):
     def num_parameters(self) -> int:
         """Total number of trainable parameters."""
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
+
+
+def load_mobilevit_checkpoint(checkpoint_path: str, device="cpu", width_mult: float = 1.0):
+    """
+    Builds the architecture a checkpoint was actually trained with (gated vs.
+    ungated skips, detected from its keys) and loads it strictly.
+
+    Returns (model, checkpoint_metadata) where metadata holds whatever training
+    stored alongside the weights (epoch, val_iou, ...), or {} for raw state dicts.
+    """
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    is_wrapped = isinstance(checkpoint, dict) and "model_state_dict" in checkpoint
+    state_dict = checkpoint["model_state_dict"] if is_wrapped else checkpoint
+    has_gates = any(k.startswith("gate") for k in state_dict)
+
+    model = MobileViT_v2(num_classes=1, width_mult=width_mult, attention_gates=has_gates)
+    model.load_state_dict(state_dict, strict=True)
+    model.to(device).eval()
+
+    metadata = {k: v for k, v in checkpoint.items()
+                if k not in ("model_state_dict", "optimizer_state_dict")} if is_wrapped else {}
+    return model, metadata
 
 
 # ═══════════════════════════════════════════════════════════════════════════
