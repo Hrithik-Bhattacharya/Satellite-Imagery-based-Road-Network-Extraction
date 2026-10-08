@@ -1,0 +1,15 @@
+{
+  "august": {
+    "latency_ms": 1111.1716428571785,
+    "min_ms": 1069.7302999997191,
+    "max_ms": 1176.0270000013406,
+    "runs": 14
+  },
+  "new": {
+    "latency_ms": 1335.6267571425633,
+    "min_ms": 1314.7879999996803,
+    "max_ms": 1357.8934999986814,
+    "runs": 14
+  },
+  "note": "1024x1024 tile, ONNX Runtime 1.30.0, 4 threads, Intel Core i5-1035G4, mains power"
+}

@@ -1,0 +1,23 @@
+{
+  "params": 1604657,
+  "parity": [
+    {
+      "height": 256,
+      "width": 256,
+      "max_abs_diff": 1.2421998007994262e-07
+    },
+    {
+      "height": 256,
+      "width": 384,
+      "max_abs_diff": 1.1457655801905275e-07
+    },
+    {
+      "height": 512,
+      "width": 512,
+      "max_abs_diff": 1.1059601945362374e-07
+    }
+  ],
+  "files_mb": {
+    "mobilevit_v2.onnx": 6.246834754943848
+  }
+}

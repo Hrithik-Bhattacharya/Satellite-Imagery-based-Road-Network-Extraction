@@ -139,7 +139,7 @@ def _patch_graph_builder(gb_module):
             while True:
                 path.append(cur)
                 visited.add(cur)
-                if cur in nodes and cur != start:
+                if cur in nodes:
                     return cur, path
                 nexts = [
                     p2 for p2 in gb_module._neighbors(cur[0], cur[1], (H, W))

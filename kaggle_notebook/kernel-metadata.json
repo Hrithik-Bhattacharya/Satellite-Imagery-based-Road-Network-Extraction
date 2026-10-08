@@ -1,0 +1,16 @@
+{
+  "id": "arya3243/coe-backend-training",
+  "title": "coe-backend-training",
+  "code_file": "train_model.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "dataset_sources": [
+    "arya3243/coe-backend",
+    "balraj98/deepglobe-road-extraction-dataset"
+  ],
+  "competition_sources": [],
+  "kernel_sources": []
+}

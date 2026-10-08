@@ -1,0 +1,77 @@
+{
+  "note": "Native-resolution evaluation on DeepGlobe validation split (622 tiles). Split NOT verified — precision mismatch of 2% between stored and recomputed training-protocol metrics. Results may be slightly optimistic. GPU: Tesla T4. Canopy augmentation was NOT applied during training (albumentations bug, p=0.0 effective).",
+  "checkpoint": "best_model_v2.pth",
+  "n_tiles": 622,
+  "configurations": {
+    "single_raw": {
+      "desc": "Single forward pass, threshold 0.5",
+      "iou": 0.5148,
+      "precision": 0.6107,
+      "recall": 0.7663,
+      "f1": 0.6797,
+      "relaxed_precision": 0.7428,
+      "relaxed_recall": 0.8485,
+      "relaxed_f1": 0.7922,
+      "cldice": 0.7672,
+      "topo_precision": 0.7384,
+      "topo_sensitivity": 0.7984,
+      "canopy_recall": 0.4826,
+      "canopy_recall_relaxed": 0.6195,
+      "open_recall": 0.78,
+      "open_recall_relaxed": 0.8595,
+      "median_components_per_tile": 15.0
+    },
+    "single_hyst": {
+      "desc": "Single forward pass, hysteresis threshold (high=0.35, low=0.12)",
+      "iou": 0.4608,
+      "precision": 0.5046,
+      "recall": 0.8415,
+      "f1": 0.6309,
+      "relaxed_f1": 0.7503,
+      "cldice": 0.7535,
+      "topo_precision": 0.6839,
+      "topo_sensitivity": 0.8388,
+      "canopy_recall": 0.5964,
+      "canopy_recall_relaxed": 0.6936,
+      "median_components_per_tile": 12.0
+    },
+    "single_full": {
+      "desc": "Single pass, hysteresis + morphological close + canopy gap bridge",
+      "iou": 0.4603,
+      "precision": 0.5036,
+      "recall": 0.8425,
+      "f1": 0.6304,
+      "relaxed_f1": 0.75,
+      "cldice": 0.7507,
+      "topo_precision": 0.6788,
+      "topo_sensitivity": 0.8395,
+      "canopy_recall": 0.5976,
+      "canopy_recall_relaxed": 0.6939,
+      "median_components_per_tile": 11.0
+    },
+    "tta_raw": {
+      "desc": "4-flip TTA, threshold 0.5 — best IoU configuration",
+      "iou": 0.5355,
+      "precision": 0.6355,
+      "recall": 0.7729,
+      "f1": 0.6975,
+      "relaxed_precision": 0.7682,
+      "relaxed_recall": 0.853,
+      "relaxed_f1": 0.8084,
+      "cldice": 0.7782,
+      "topo_precision": 0.7533,
+      "topo_sensitivity": 0.8048,
+      "canopy_recall": 0.4776,
+      "canopy_recall_relaxed": 0.6156,
+      "open_recall": 0.7871,
+      "open_recall_relaxed": 0.8644,
+      "median_components_per_tile": 13.0
+    }
+  },
+  "tta_vs_single_significance": {
+    "n_tiles": 622,
+    "mean_iou_diff": -0.0052,
+    "wilcoxon_p": 0.0007,
+    "note": "TTA improves single-pass IoU by +0.021 (0.5148 to 0.5355). Wilcoxon p=0.0007 confirms significant improvement."
+  }
+}

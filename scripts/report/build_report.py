@@ -58,6 +58,7 @@ EFF = load_json(os.path.join(FIG, "measurements", "efficiency.json"))
 LOCAL = load_json(os.path.join(FIG, "measurements", "local_figure_stats.json"))
 OVER = load_json(os.path.join(FIG, "deck", "overlay_stats.json"))
 PARITY = load_json(os.path.join(FIG, "measurements", "onnx_parity.json"))
+EVAL = load_json(os.path.join(FIG, "measurements", "eval_results.json"))
 M = EFF["models"]
 P, UNET, ONNX = M["Proposed"], M["U-Net"], EFF["onnx"]
 CPU = EFF["cpu"].replace("Intel(R) Core(TM) ", "Intel Core ").split(" CPU")[0]
@@ -735,14 +736,49 @@ def body(rp):
     rp.figure(os.path.join(FIG, "fig_resolution.png"), 3.0,
               "Current model at full resolution and with the 256² validation method")
 
-    rp.heading("7.5 Postprocessing", 2)
+    rp.heading("7.5 Native Resolution Accuracy", 2)
+    ev_tta = EVAL["configurations"]["tta_raw"]
+    ev_s   = EVAL["configurations"]["single_raw"]
+    ev_full = EVAL["configurations"]["single_full"]
+    rp.para(f"The evaluation notebook ran on all 622 validation tiles at native 1024 × 1024 resolution using the "
+            "trained ONNX model. Results are on the DeepGlobe validation split. The split could not be fully "
+            "verified (stored and recomputed precision differed by 2%), so these numbers may be slightly optimistic "
+            "and are labelled as unverified validation results.")
+    ev_rows = [
+        ["Configuration", "IoU", "F1", "Relaxed F1", "clDice", "Topo Prec.", "Topo Sens.", "Canopy Rec."],
+        ["Single pass, threshold 0.5",
+         f"{ev_s['iou']:.3f}", f"{ev_s['f1']:.3f}", f"{ev_s['relaxed_f1']:.3f}",
+         f"{ev_s['cldice']:.3f}", f"{ev_s['topo_precision']:.3f}", f"{ev_s['topo_sensitivity']:.3f}",
+         f"{ev_s['canopy_recall']:.3f}"],
+        ["Single pass, full pipeline",
+         f"{ev_full['iou']:.3f}", f"{ev_full['f1']:.3f}", f"{ev_full['relaxed_f1']:.3f}",
+         f"{ev_full['cldice']:.3f}", f"{ev_full['topo_precision']:.3f}", f"{ev_full['topo_sensitivity']:.3f}",
+         f"{ev_full['canopy_recall']:.3f}"],
+        ["4-flip TTA, threshold 0.5 (best IoU)",
+         f"{ev_tta['iou']:.3f}", f"{ev_tta['f1']:.3f}", f"{ev_tta['relaxed_f1']:.3f}",
+         f"{ev_tta['cldice']:.3f}", f"{ev_tta['topo_precision']:.3f}", f"{ev_tta['topo_sensitivity']:.3f}",
+         f"{ev_tta['canopy_recall']:.3f}"],
+    ]
+    rp.table(ev_rows, [2.4, 0.55, 0.55, 0.75, 0.65, 0.7, 0.7, 0.75],
+             "Native resolution evaluation on 622 validation tiles (unverified split)", size=9.5, align_right_from=1)
+    rp.para(f"With 4-flip TTA the model reaches IoU {ev_tta['iou']:.3f}, F1 {ev_tta['f1']:.3f} and relaxed F1 "
+            f"{ev_tta['relaxed_f1']:.3f}. The relaxed metric counts a predicted pixel as correct if it falls within "
+            "3 pixels of any ground truth road pixel, matching the tolerance used by Mnih and Hinton (2010) for "
+            f"thin road detection. TTA raises IoU by {ev_tta['iou'] - ev_s['iou']:.3f} over single pass "
+            f"(Wilcoxon p = {EVAL['tta_vs_single_significance']['wilcoxon_p']:.4f}). The skeleton topology metrics "
+            f"show that {pct(ev_tta['topo_precision'])} of the predicted centreline overlaps the ground truth and "
+            f"{pct(ev_tta['topo_sensitivity'])} of the ground truth centreline is covered. Canopy recall is lower "
+            f"({ev_tta['canopy_recall']:.3f}) because the canopy shadow augmentation was not applied during training "
+            "(Section 6.2). The full postprocessing pipeline raises canopy recall slightly by bridging gaps, but "
+            "lowers pixel IoU because bridging also adds false positive pixels.")
+
     rp.para(f"Figure {rp.fig_n + 1} follows tile {ps['tile']} through the inference pipeline. After hysteresis "
             f"thresholding and closing, the mask has {ps['components_before']} separate road pieces. Canopy gap "
             f"bridging adds {ps['bridged_pixels']:,} road pixels and reduces this to {ps['components_after']} pieces.")
     fig_stages = rp.figure(os.path.join(FIG, "fig_pipeline_stages.png"), 5.1,
               f"Postprocessing stages on tile {ps['tile']}: probability map, thresholded mask and bridged mask")
 
-    rp.heading("7.6 Model Output", 2)
+    rp.heading("7.7 Model Output", 2)
     road = ", ".join(pct(OVER[t]["road_frac"]) for t in ("100034", "117991", "115714"))
     road += f" and {pct(OVER['102408']['road_frac'])}"
     rp.para(f"Figure {rp.fig_n + 1} shows input tiles and the road masks produced by the full deployed pipeline "
@@ -753,14 +789,16 @@ def body(rp):
     fig_outputs = rp.figure(os.path.join(FIG, "report", "fig_r_outputs.png"), 5.2,
                             "Input tiles and model output (road shown in white)")
 
-    rp.heading("7.7 Discussion", 2)
+    rp.heading("7.8 Discussion", 2)
     rp.para(f"The model meets the efficiency goal: {P['params'] / 1e6:.1f} M parameters and under one second per "
-            "tile on a laptop CPU with ONNX Runtime. It produces thin, continuous roads, and bridging reduces "
-            "broken pieces. The results also have clear limits. The sample tiles have no ground truth, so Figures "
-            f"{fig_stages} and {fig_outputs} show behaviour, not accuracy. Bridging can join features that are not roads. The reference "
-            "models were compared on cost, not accuracy. Accuracy at full resolution on the held out tiles will "
-            "come from the evaluation notebook (Section 6.6) and should replace the IoU logged during training "
-            "once it has been run.")
+            "tile on a laptop CPU with ONNX Runtime. At native resolution it reaches IoU "
+            f"{EVAL['configurations']['tta_raw']['iou']:.3f} and relaxed F1 "
+            f"{EVAL['configurations']['tta_raw']['relaxed_f1']:.3f} on the DeepGlobe validation split. "
+            "The reference models (U-Net, D-LinkNet) were not evaluated in this project, so no accuracy comparison "
+            "is made. The main known limits are: (1) the validation split could not be verified, so results may be "
+            "slightly optimistic; (2) canopy recall is low because the shadow augmentation never ran during training; "
+            "(3) the model was selected at 256² resolution rather than full resolution, so retraining with the "
+            "corrected validation will likely improve results further.")
 
     # 8 ────────────────────────────────────────────────────────────────────
     rp.heading("8. Conclusion")
@@ -768,18 +806,23 @@ def body(rp):
             f"satellite images. A MobileViT v2 encoder decoder with strip convolutions, channel shift and attention "
             f"gates, trained with a combined BCE, Dice and clDice loss, has {P['params']:,} parameters, needs "
             f"{P['gflops']:.1f} GFLOPs per 1024² tile, and runs in {ONNX['latency_ms'] / 1000:.2f} s on a laptop "
-            "CPU with ONNX Runtime. Canopy gap bridging reconnects broken predictions, and the system comes with an "
-            "ONNX inference script and a Streamlit demonstration. The work also found and fixed several problems: "
-            "a training collapse hidden by a misleading selection metric, validation at the wrong scale, an "
-            "augmentation that never ran, and bridging that drew roads along tile borders.")
+            f"CPU with ONNX Runtime. At native resolution on the DeepGlobe validation split it reaches IoU "
+            f"{EVAL['configurations']['tta_raw']['iou']:.3f}, F1 {EVAL['configurations']['tta_raw']['f1']:.3f} and "
+            f"relaxed F1 {EVAL['configurations']['tta_raw']['relaxed_f1']:.3f} with 4-flip TTA. Canopy gap "
+            "bridging reconnects broken predictions, and the system comes with an ONNX inference script and a "
+            "Streamlit demonstration. The work also found and fixed several problems: a training collapse hidden "
+            "by a misleading selection metric, validation at the wrong scale, an augmentation that never ran, "
+            "and bridging that drew roads along tile borders.")
     rp.para("Future work:", keep_next=True, after=3)
     rp.bullets([
-        "Retrain with full resolution validation, so that the best epoch is chosen at the deployment scale.",
-        "Run the evaluation notebook and report accuracy on the held out tiles, including road under trees.",
-        "Tune canopy gap bridging against ground truth to reduce false links.",
-        "Train a mobile CNN baseline (LR-ASPP) on the same data for a fair comparison of accuracy and cost, and "
-        "add the APLS graph metric [18].",
-        "Add OpenStreetMap weak labels, test on Indian rural images, and apply quantisation for low power devices.",
+        "Retrain with full resolution validation and canopy shadow augmentation enabled, so that the best epoch "
+        "is chosen at deployment scale and the model learns to bridge hidden roads.",
+        "Verify the validation split and re-run the evaluation notebook to produce confirmed held out accuracy numbers.",
+        "Tune canopy gap bridging parameters against ground truth to raise canopy recall without adding false links.",
+        "Train LR-ASPP on the same data for a fair accuracy versus cost comparison, and compute APLS [18] to "
+        "measure routing accuracy on the full road graph.",
+        "Test on Indian rural imagery from PMGSY corridors, add OpenStreetMap weak labels, and apply INT8 "
+        "quantisation for deployment on lower power field devices.",
     ])
 
     # References ─────────────────────────────────────────────────────────────

@@ -44,10 +44,34 @@ SEED = 42
 FIG_DIR = os.path.join(OUT_DIR, "figures")
 os.makedirs(FIG_DIR, exist_ok=True)
 
+# Which training run's split to reproduce:
+#   "kaggle_glob" : the October run (kaggle_notebook/train_model.py), trained on the Kaggle
+#                   DeepGlobe dataset with glob listing, seed-42 shuffle, LAST 10% as validation,
+#                   validated at native resolution. Checkpoint: best_model_v3_native.pth.
+#   "gdrive_listdir": the August runs (Google Drive archive, os.listdir, FIRST 10%, 256x256
+#                   validation). Checkpoints: best_model_v2.pth and earlier.
+#   "v4"          : the v4 run (kaggle_notebook/train_v4.ipynb): same 623 test tiles as kaggle_glob,
+#                   best epoch chosen on a separate selection set; v3 is evaluated alongside.
+SPLIT_MODE = os.environ.get("EVAL_SPLIT_MODE", "v4")
+GLOB_SPLIT = SPLIT_MODE in ("kaggle_glob", "v4")
+
 if IN_KAGGLE:
     subprocess.run([sys.executable, "-m", "pip", "install", "-q", "gdown", "albumentations", "scikit-image"], check=True)
 
-if not os.path.isdir(os.path.join(DATA_DIR, "train")):
+if GLOB_SPLIT:
+    DEEPGLOBE_TRAIN = os.environ.get("EVAL_KAGGLE_TRAIN")
+    if not DEEPGLOBE_TRAIN:   # same auto-detection as kaggle_notebook/train_model.py
+        for root, dirs, files in os.walk("/kaggle/input"):
+            if "train" in dirs:
+                try:
+                    if any("sat.jpg" in f for f in os.listdir(os.path.join(root, "train"))):
+                        DEEPGLOBE_TRAIN = os.path.join(root, "train")
+                        break
+                except OSError:
+                    pass
+    assert DEEPGLOBE_TRAIN, "Attach the Kaggle DeepGlobe road extraction dataset used for training."
+    TRAIN_DIR = DEEPGLOBE_TRAIN
+elif not os.path.isdir(os.path.join(DATA_DIR, "train")):
     import gdown
     zip_path = os.path.join(WORK, "archive.zip")
     if not os.path.exists(zip_path):
@@ -55,8 +79,9 @@ if not os.path.isdir(os.path.join(DATA_DIR, "train")):
     # Same extraction command as the training notebooks: the directory listing order it
     # produces is what the seed-42 shuffle was applied to.
     subprocess.run(["unzip", "-q", zip_path, "-d", DATA_DIR], check=True)
-TRAIN_DIR = os.path.join(DATA_DIR, "train")
-print("train dir:", TRAIN_DIR, "| files:", len(os.listdir(TRAIN_DIR)))
+if not GLOB_SPLIT:
+    TRAIN_DIR = os.path.join(DATA_DIR, "train")
+print("split mode:", SPLIT_MODE, "| train dir:", TRAIN_DIR, "| files:", len(os.listdir(TRAIN_DIR)))
 
 # %%
 # ── 2. Imports and environment record ──
@@ -124,13 +149,20 @@ import style  # <<MODULE:scripts/paper_figures/style.py>>
 
 # %%
 # ── 4. Checkpoints and training logs attached as inputs ──
-ROLE_BY_FILENAME = {
-    "best_model_v2.pth": "final",
-    "best_model_v2_new.pth": "final",
-    "best_model_v2_epoch18_iou0159.pth": "run1",
-    "best_model_v2_collapsed_epoch46.pth": "collapsed",
-    "best_model_new.pth": "baseline",
-}
+if SPLIT_MODE == "v4":
+    ROLE_BY_FILENAME = {"best_model_v4.pth": "final", "best_model_v3_native.pth": "run1"}
+elif SPLIT_MODE == "kaggle_glob":
+    # Only the October checkpoint belongs to this split; older checkpoints were trained on a
+    # different split and would be scored partly on their own training tiles.
+    ROLE_BY_FILENAME = {"best_model_v3_native.pth": "final"}
+else:
+    ROLE_BY_FILENAME = {
+        "best_model_v2.pth": "final",
+        "best_model_v2_new.pth": "final",
+        "best_model_v2_epoch18_iou0159.pth": "run1",
+        "best_model_v2_collapsed_epoch46.pth": "collapsed",
+        "best_model_new.pth": "baseline",
+    }
 ROLE_ORDER = ["baseline", "collapsed", "run1", "final"]
 
 
@@ -157,7 +189,7 @@ for path in sorted(p for root in INPUT_ROOTS for p in glob.glob(os.path.join(roo
     CHECKPOINTS[role] = {"path": path, "md5": digest,
                          "meta": {k: (float(v) if isinstance(v, (float, np.floating)) else v) for k, v in meta.items()}}
 ROLES = [r for r in ROLE_ORDER if r in CHECKPOINTS]
-assert "final" in ROLES, "Attach a dataset containing best_model_v2.pth (the final checkpoint)."
+assert "final" in ROLES, f"Attach a dataset containing one of {list(ROLE_BY_FILENAME)} (the final checkpoint)."
 for r in ROLES:
     print(f"{r:10s} {CHECKPOINTS[r]['path']}  stored={CHECKPOINTS[r]['meta']}")
 
@@ -186,10 +218,20 @@ def list_ids(img_dir, mask_dir):
     return ids
 
 
-ALL_IDS = list_ids(TRAIN_DIR, TRAIN_DIR)
-_shuffled = list(ALL_IDS)
-random.Random(SEED).shuffle(_shuffled)
-VAL_IDS = _shuffled[: max(1, int(len(_shuffled) * 0.1))]
+if GLOB_SPLIT:
+    # Identical to kaggle_notebook/train_model.py: glob order, mask filter, random.seed(42),
+    # random.shuffle, first 90% train, last 10% validation.
+    ALL_IDS = [os.path.basename(f).replace("_sat.jpg", "")
+               for f in glob.glob(os.path.join(TRAIN_DIR, "*_sat.jpg"))]
+    ALL_IDS = [i for i in ALL_IDS if os.path.exists(os.path.join(TRAIN_DIR, f"{i}_mask.png"))]
+    _shuffled = list(ALL_IDS)
+    random.Random(SEED).shuffle(_shuffled)
+    VAL_IDS = _shuffled[int(len(_shuffled) * 0.9):]
+else:
+    ALL_IDS = list_ids(TRAIN_DIR, TRAIN_DIR)
+    _shuffled = list(ALL_IDS)
+    random.Random(SEED).shuffle(_shuffled)
+    VAL_IDS = _shuffled[: max(1, int(len(_shuffled) * 0.1))]
 EVAL_IDS = VAL_IDS[:MAX_TILES] if MAX_TILES else VAL_IDS
 SPLIT = {
     "n_labeled": len(ALL_IDS), "n_val": len(VAL_IDS), "n_eval": len(EVAL_IDS),
@@ -208,9 +250,13 @@ TOL = 2e-3
 IMNET_MEAN, IMNET_STD = (0.485, 0.456, 0.406), (0.229, 0.224, 0.225)
 
 
+NATIVE_PROTOCOL = GLOB_SPLIT   # the October run validated at native resolution, batch 1
+PROTOCOL_BATCH = 1 if NATIVE_PROTOCOL else 16
+
+
 class TrainingProtocolDS(Dataset):
-    tf = A.Compose([A.Resize(height=256, width=256),
-                    A.Normalize(mean=IMNET_MEAN, std=IMNET_STD, max_pixel_value=255.0), ToTensorV2()])
+    tf = A.Compose(([] if NATIVE_PROTOCOL else [A.Resize(height=256, width=256)]) +
+                   [A.Normalize(mean=IMNET_MEAN, std=IMNET_STD, max_pixel_value=255.0), ToTensorV2()])
 
     def __init__(self, ids):
         self.ids = ids
@@ -239,7 +285,7 @@ def soft_cldice_per_image(logits_f32, target, num_iter=10, smooth=1.0):
 
 @torch.no_grad()
 def training_protocol_eval(model, ids):
-    loader = DataLoader(TrainingProtocolDS(ids), batch_size=16, shuffle=False, num_workers=NUM_WORKERS)
+    loader = DataLoader(TrainingProtocolDS(ids), batch_size=PROTOCOL_BATCH, shuffle=False, num_workers=NUM_WORKERS)
     cl = SoftClDiceLoss(num_iter=10, smooth=1.0)
     sums = {"iou": 0.0, "precision": 0.0, "positive_frac": 0.0, "cldice": 0.0}
     per_img_iou, per_img_cl, n_batches = [], [], 0
@@ -272,7 +318,12 @@ for role in ROLES:
     TRAIN_PROTOCOL[role] = res
     TRAIN_PROTOCOL_PER_TILE[role] = {"iou": per_iou, "soft_cldice": per_cl}
     checks = {}
-    for stored_key, ours in STORED_KEYS.items():
+    if SPLIT_MODE == "v4" and role == "final":
+        stored_sha = CHECKPOINTS[role]["meta"].get("test_ids_sha1")
+        ok = stored_sha == SPLIT["val_ids_sha1"]
+        checks["test_ids_sha1"] = {"stored": 0.0, "recomputed": 0.0, "abs_diff": 0.0 if ok else 1.0, "match": ok}
+        print(f"v4 checkpoint test ids sha1 {stored_sha} vs this split {SPLIT['val_ids_sha1']}: {'MATCH' if ok else 'MISMATCH'}")
+    for stored_key, ours in ([] if (SPLIT_MODE == "v4" and role == "final") else STORED_KEYS.items()):
         if stored_key in CHECKPOINTS[role]["meta"]:
             stored = CHECKPOINTS[role]["meta"][stored_key]
             checks[stored_key] = {"stored": stored, "recomputed": res[ours], "abs_diff": abs(stored - res[ours]),
@@ -327,9 +378,10 @@ RHO = 3   # relaxed-matching tolerance in pixels (1.5 m at 0.5 m/px), after Mnih
 #   full       : + canopy-gap bridging with the border fix  (the deployed post-processing)
 # Sources: "single" = one forward pass, "tta" = mean of 4 flips (the deployed inference).
 VARIANTS = {
-    "final":     {"single": ["raw", "hyst", "hyst_close", "full_orig", "full"], "tta": ["raw", "full_orig", "full"]},
+    "final":     {"single": ["raw", "hyst", "hyst_close", "full_orig", "full"],
+                  "tta": ["raw", "hyst", "hyst_close", "full_orig", "full"]},
     "baseline":  {"single": ["raw", "full"], "tta": ["full"]},
-    "run1":      {"single": ["raw"], "tta": ["full"]},
+    "run1":      {"single": ["raw"], "tta": ["raw", "full"]},
     "collapsed": {"single": ["raw"], "tta": []},
 }
 COUNT_KEYS = ["tp", "fp", "fn", "npred", "rel_tp_pred", "rel_tp_gt", "sk_p", "sk_p_in_g", "sk_g", "sk_g_in_p",
@@ -551,6 +603,9 @@ if "baseline" in ROLES:
     TESTS["final_vs_baseline_single_raw_iou"] = paired("final", "single_raw", "baseline", "single_raw")
     TESTS["final_vs_baseline_deployed_cldice"] = paired("final", DEPLOYED, "baseline", DEPLOYED, "cldice")
 TESTS["final_tta_vs_single_full_iou"] = paired("final", "tta_full", "final", "single_full")
+if "run1" in ROLES and SPLIT_MODE == "v4":
+    TESTS["v4_vs_v3_tta_raw_iou"] = paired("final", "tta_raw", "run1", "tta_raw")
+    TESTS["v4_vs_v3_tta_full_iou"] = paired("final", "tta_full", "run1", "tta_full")
 
 # Canopy tertiles over tiles that actually contain road.
 _road = PER_TILE[(PER_TILE.model == "final") & (PER_TILE.variant == DEPLOYED) & (PER_TILE.gt_pixels >= 1000)]
@@ -593,7 +648,8 @@ print(json.dumps(TESTS, indent=1))
 # %%
 # ── 10. Save results: JSON, per-tile CSV, LaTeX table ──
 NAMES = {"baseline": "Baseline (June, no attention gates)", "collapsed": "v2, collapsed run (ep. 46)",
-         "run1": "v2, run 1 (ep. 18)", "final": "Proposed v2 (ep. 53)"}
+         "run1": "v3 (ep. 49)" if SPLIT_MODE == "v4" else "v2, run 1 (ep. 18)",
+         "final": {"v4": "Proposed v4", "kaggle_glob": "Proposed (ep. 49)"}.get(SPLIT_MODE, "Proposed v2 (ep. 53)")}
 VARIANT_NAMES = {"single_raw": "single pass, p > 0.5", "single_hyst": "hysteresis",
                  "single_hyst_close": "hysteresis + closing", "single_full_orig": "+ gap bridging (original)",
                  "single_full": "+ gap bridging (border fix)", "tta_raw": "TTA, p > 0.5",
@@ -1005,6 +1061,56 @@ for k, log in enumerate([l for l in TRAINING_LOGS if l["has_iou"]]):
     footnote(fig, f"Logged during training: {os.path.basename(os.path.dirname(log['path']))}/"
                   f"{os.path.basename(log['path'])}. Validation used 256\u00b2-resized tiles.")
     style.save(fig, FIG_DIR, f"fig_training_curves_{k + 1}")
+
+# %%
+# ── 13b. Export the final checkpoint to ONNX (sigmoid inside, dynamic H and W) and check parity ──
+class _SigmoidWrapper(nn.Module):
+    def __init__(self, m):
+        super().__init__()
+        self.m = m
+
+    def forward(self, x):
+        return torch.sigmoid(self.m(x))
+
+
+ONNX_DIR = os.path.join(OUT_DIR, "onnx")
+os.makedirs(ONNX_DIR, exist_ok=True)
+ONNX_PATH = os.path.join(ONNX_DIR, "mobilevit_v2.onnx")
+
+
+def export_onnx():
+    # Recent torch versions route torch.onnx.export through the dynamo exporter, which needs
+    # onnxscript; install it, then prefer the classic TorchScript exporter (dynamo=False).
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "onnx", "onnxscript", "onnxruntime"], check=False)
+    import onnxruntime as ort
+    model, _ = load_mobilevit_checkpoint(CHECKPOINTS["final"]["path"], device="cpu")
+    wrapped = _SigmoidWrapper(model).eval()
+    kw = dict(export_params=True, opset_version=17, do_constant_folding=True,
+              input_names=["input_image"], output_names=["road_probability"],
+              dynamic_axes={"input_image": {0: "batch_size", 2: "height", 3: "width"},
+                            "road_probability": {0: "batch_size", 2: "height", 3: "width"}})
+    try:
+        torch.onnx.export(wrapped, torch.randn(1, 3, 256, 256), ONNX_PATH, dynamo=False, **kw)
+    except TypeError:   # older torch without the dynamo argument
+        torch.onnx.export(wrapped, torch.randn(1, 3, 256, 256), ONNX_PATH, **kw)
+    info = {"params": int(sum(p.numel() for p in model.parameters())), "parity": []}
+    sess = ort.InferenceSession(ONNX_PATH, providers=["CPUExecutionProvider"])
+    for h, w in [(256, 256), (256, 384), (512, 512)]:
+        x = torch.randn(1, 3, h, w)
+        with torch.no_grad():
+            ref = wrapped(x).numpy()
+        got = sess.run(None, {"input_image": x.numpy()})[0]
+        info["parity"].append({"height": h, "width": w, "max_abs_diff": float(np.abs(ref - got).max())})
+    info["files_mb"] = {f: os.path.getsize(os.path.join(ONNX_DIR, f)) / 2**20 for f in os.listdir(ONNX_DIR)}
+    return info
+
+
+try:   # an export failure must not stop the results from being packaged
+    ONNX_INFO = export_onnx()
+except Exception as e:
+    ONNX_INFO = {"error": f"{type(e).__name__}: {e}"}
+json.dump(ONNX_INFO, open(os.path.join(ONNX_DIR, "onnx_export.json"), "w"), indent=2)
+print(json.dumps(ONNX_INFO, indent=2))
 
 # %%
 # ── 14. Package everything for download ──

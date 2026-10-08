@@ -1,0 +1,9 @@
+{
+  "v4": {
+    "latency_ms": 1270.8138285717203,
+    "min_ms": 1141.5016999999352,
+    "max_ms": 1387.317600001552,
+    "runs": 14
+  },
+  "note": "1024x1024 tile, ONNX Runtime 1.30.0, 4 threads, Intel Core i5-1035G4"
+}
