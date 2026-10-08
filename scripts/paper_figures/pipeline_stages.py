@@ -1,6 +1,6 @@
 """Postprocessing stages on one tile with the deployed ONNX model (no PyTorch needed).
 
-Writes docs/paper_access/figures/fig_pipeline_stages.pdf and
+Writes docs/paper/figures/fig_pipeline_stages.pdf and
 figures/real/measurements/pipeline_stages.json.
 """
 import json
@@ -19,7 +19,7 @@ sys.path.insert(0, REPO)
 from backend.src.utils.graph_postprocess import hysteresis_threshold, connect_canopy_gaps
 
 TILE = "117991"
-OUT_FIG = os.path.join(REPO, "docs", "paper_access", "figures", "fig_pipeline_stages.pdf")
+OUT_FIG = os.path.join(REPO, "docs", "paper", "figures", "fig_pipeline_stages.pdf")
 OUT_JSON = os.path.join(REPO, "figures", "real", "measurements", "pipeline_stages.json")
 MEAN = np.array([0.485, 0.456, 0.406], np.float32)
 STD = np.array([0.229, 0.224, 0.225], np.float32)

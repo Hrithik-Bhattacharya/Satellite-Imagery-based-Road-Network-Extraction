@@ -40,7 +40,7 @@ OUT = os.path.join(REPO, "figures", "real")
 SAMPLES = ["100034", "102408", "115714", "117991"]
 CKPTS = {
     "final": "models/best_model_v2.pth",
-    "baseline": "models/best_model_new.pth",
+    "baseline": "models/archive/best_model_new.pth",
     "run1": "models/archive/best_model_v2_epoch18_iou0159.pth",
     "collapsed": "models/archive/best_model_v2_collapsed_epoch46.pth",
 }

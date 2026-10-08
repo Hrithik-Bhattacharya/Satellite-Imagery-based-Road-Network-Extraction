@@ -1,211 +1,173 @@
-# Lightweight MobileViT-Graph Network for Topological Rural Road Extraction
+# Lightweight Topology Aware MobileViT Network for Rural Road Extraction
 
-> **IAMPro-2026 Internship Project** — IEEE CS Bangalore Chapter  
-> Satellite Imagery-based Rural Road Network Extraction using MobileViT v2 + SoftClDice Loss
+A road extraction network with **1.60 million parameters** that finds rural roads in 0.5 m satellite
+images, keeps them connected, and runs on an ordinary laptop processor through ONNX Runtime
+without PyTorch or a graphics card.
 
-![Framework](https://img.shields.io/badge/Framework-PyTorch-ee4c2c)
-![Deployment](https://img.shields.io/badge/Deployment-ONNX_Edge_Ready-blue)
-![Parameters](https://img.shields.io/badge/Parameters-1.6M-green)
-
----
-
-## Overview
-
-India's Pradhan Mantri Gram Sadak Yojana (PMGSY) has built over 700,000 km of rural roads since 2000. Auditing connectivity and maintenance status across this network manually is prohibitively slow. Satellite imagery offers nationwide coverage, but standard segmentation models trained on urban datasets fail on rural roads — which are narrow, unpaved, and frequently hidden under tree canopies and shadows.
-
-This project builds a 1.6 M parameter encoder-decoder that extracts rural road networks from satellite tiles with full topological post-processing (canopy gap bridging, skeletonisation, graph construction). The model runs on CPU-only edge hardware via ONNX Runtime with no PyTorch dependency.
+![Parameters](https://img.shields.io/badge/Parameters-1.60M-green)
+![Test IoU](https://img.shields.io/badge/Test%20IoU-61.1%25-blue)
+![Deployment](https://img.shields.io/badge/Deployment-ONNX%20Runtime-lightgrey)
 
 ---
 
-## Architecture
+## Results (current model: v4)
 
-| Component | Design choice | Reason |
-|---|---|---|
-| Encoder | MobileViT v2 (width mult 1.0) | Linear-cost separable self-attention; global context at 1.6 M parameters |
-| Strip conv stem | 1×3 then 3×1 factorised convolutions | Road-shaped directional filters, fewer FLOPs than 3×3 |
-| Channel shift | Zero-parameter 2-pixel spatial displacement | Cheap spatial context for thin structures |
-| Skip connections | Attention gates | Suppresses background noise on decoder skip paths |
-| Loss | SoftClDice + Dice + BCE composite | Topology precision and sensitivity via soft skeleton; annealed weights over training |
-| Post-processing | Hysteresis threshold → morphological close → canopy gap bridge | Recovers connectivity broken by shadow occlusions |
-| Export | ONNX with dynamic H×W, sigmoid baked in | Runs on CPU, drone boards, or mobile via ONNX Runtime Mobile |
+Measured on **623 DeepGlobe test tiles** at full 1024 x 1024 resolution. These tiles were never
+used for training or for choosing the best epoch, and the evaluation notebook checks this before
+reporting (it prints `SPLIT VERIFIED`).
 
-**Parameter count (verified):** 1,604,657  
-**ONNX vs PyTorch output difference (verified):** max absolute diff = 1.76 × 10⁻⁷ at 256², 256×384, and 512²
+| Inference setting | IoU | F1 | Relaxed F1 | clDice | Road parts per tile |
+|---|---|---|---|---|---|
+| Single pass, threshold 0.5 | 59.8 | 74.8 | 85.9 | 84.2 | 17 |
+| **Four flip TTA, threshold 0.5** | **61.1** | **75.8** | **86.7** | **84.5** | 13 |
+| Four flip TTA + hysteresis + gap bridging | 52.6 | 69.0 | 80.7 | 75.8 | **2** (ground truth: 2) |
+
+All values in %. IoU 95% bootstrap interval for the best setting: 60.0 to 62.1.
+
+* **Roads under tree cover:** recall 60.3% (open road 80.3%); the full postprocessing raises it to 75.1%.
+* **Speed:** 1.27 s per 1024 x 1024 tile with ONNX Runtime on an Intel Core i5-1035G4 (4 threads).
+* **Size:** 6.2 MB ONNX file. ONNX and PyTorch outputs differ by at most 1.2 x 10^-7.
+* **Training recipe matters:** v4 beats the earlier v3 model on 90% of the test tiles
+  (IoU 61.1% against 52.7%, Wilcoxon p ~ 10^-87).
+
+Every number above comes from a committed file: `figures/real/v4/paper_results/results.json`,
+`figures/real/measurements/onnx_latency_v4.json`, and `figures/real/v4/paper_results/onnx/onnx_export.json`.
 
 ---
 
-## Project Structure
+## Method in short
+
+| Part | Choice |
+|---|---|
+| Encoder | MobileViT v2 blocks (separable self attention, cost linear in image size) |
+| Road friendly blocks | Strip convolutions (1x3 then 3x1) and channel shift, both taken from HPLNet (Cui et al., 2025) |
+| Skip connections | Attention gates |
+| Loss | Binary cross entropy + Dice + clDice; the clDice weight grows during training |
+| Collapse guard | Epochs that mark more than 20% of pixels as road are never saved |
+| Postprocessing | Hysteresis threshold (0.35 / 0.12), 5x5 closing, gap bridging of road ends up to 220 px apart |
+| Graph analysis | Skeleton to graph, betweenness centrality, resilience index |
+
+v4 training: 160 epochs, 512 x 512 crops, flips, 90 degree rotations, small affine changes, colour
+changes, synthetic tree shadows, EMA of the weights, best epoch chosen on 280 tiles held out from
+the training set. See `notebooks/train_v4.ipynb` and `models/v4_training/history.csv`.
+
+---
+
+## Quick start
+
+```bash
+pip install -r backend/requirements-edge.txt          # inference only, no PyTorch
+python scripts/predict_onnx.py data/samples/117991_sat.jpg --output prediction_117991.png
+```
+
+This uses `models/mobilevit_v2.onnx` (the v4 model), prints the time and the road fraction, and
+saves the road mask. Eight sample tiles are in `data/samples/`.
+
+Other entry points (shortcuts for most of them are in the `Makefile`):
+
+| Task | Command |
+|---|---|
+| Full environment (training, evaluation, figures) | `pip install -r backend/requirements.txt` |
+| Inference with PyTorch | `python scripts/predict_single_image.py data/samples/100034_sat.jpg` |
+| Count parameters | `python backend/scripts/test_model.py` (1,604,657) |
+| Export ONNX from a checkpoint | `python backend/scripts/export_onnx.py --checkpoint models/best_model_v4.pth` |
+| Streamlit demo | `python -m streamlit run demo_app.py` |
+| REST API | `uvicorn backend.api:app --reload` |
+| Tests | `python -m pytest backend/tests -q` |
+
+---
+
+## Reproducing the results
+
+Training and accuracy evaluation need the DeepGlobe dataset and a GPU, so they run on Kaggle.
+
+**1. Train v4** (`notebooks/train_v4.ipynb`, about 12.5 GPU hours)
+1. Open the Kaggle dataset `balraj98/deepglobe-road-extraction-dataset` and create a new notebook.
+2. File, Import Notebook, choose `notebooks/train_v4.ipynb`.
+3. Settings: GPU T4, Internet on. Save Version, Save & Run All.
+4. If it prints `RESUME NEEDED` (12 hour limit), run a new version with the previous output attached.
+5. Download `v4/best_model_v4.pth` and `v4/history.csv`.
+
+**2. Evaluate** (`notebooks/evaluate_for_paper.ipynb`, about 20 minutes)
+1. New notebook from the same dataset, import `notebooks/evaluate_for_paper.ipynb`.
+2. Add the checkpoints `best_model_v4.pth` and `best_model_v3_native.pth` as an input (a Kaggle model or dataset).
+3. GPU T4, Internet on, Run All. Check for `SPLIT VERIFIED`.
+4. Download `paper_results.zip`; it contains `results.json`, per tile metrics, figures, and the ONNX export.
+
+**3. Paper figures that run locally**
+
+```bash
+make figures      # architecture diagrams, prediction grid, postprocessing stages, graph analysis, training curve
+```
+
+The notebooks are generated from Python sources; after editing those, run `make notebooks`.
+
+---
+
+## Repository layout
 
 ```text
 .
 ├── backend/
-│   ├── requirements.txt            # Full training environment
-│   ├── requirements-edge.txt       # Inference only (no PyTorch)
-│   ├── scripts/
-│   │   ├── train.py                # Training loop with collapse-gated checkpointing
-│   │   ├── export_onnx.py          # Checkpoint to ONNX with parity check
-│   │   ├── evaluate.py             # Held-out evaluation script
-│   │   └── test_model.py           # Parameter count and forward-pass benchmark
-│   └── src/
-│       ├── models/mobilevit_v2.py  # MobileViT v2 encoder-decoder
-│       ├── data/                   # Dataset loader and augmentations
-│       └── utils/                  # Loss (clDice), metrics, graph postprocessing
-│
-├── scripts/
-│   ├── predict_single_image.py     # PyTorch inference with full postprocessing
-│   ├── predict_onnx.py             # ONNX Runtime inference (edge deployment)
-│   ├── paper_figures/              # Scripts that generate all measured figures
-│   └── report/                     # Scripts that build the internship report and literature doc
-│
-├── notebooks/
-│   ├── model_training_v2.ipynb     # Kaggle training notebook
-│   └── evaluate_for_paper.ipynb    # Full held-out evaluation (run on Kaggle)
-│
+│   ├── src/models/mobilevit_v2.py      network
+│   ├── src/utils/                      loss (clDice), postprocessing, graph tools, metrics
+│   ├── src/data/                       dataset and augmentations
+│   ├── scripts/                        train.py, export_onnx.py, evaluate.py, benchmarks
+│   ├── tests/                          unit tests
+│   └── api.py                          FastAPI endpoint
 ├── models/
-│   ├── best_model_v2.pth           # Current best checkpoint (epoch 53)
-│   ├── mobilevit_v2.onnx           # Exported ONNX graph
-│   └── archive/                    # Earlier and collapsed checkpoints
-│
+│   ├── best_model_v4.pth               current model (epoch 158)
+│   ├── mobilevit_v2.onnx               v4 exported to ONNX
+│   ├── best_model_v3_native.pth        earlier model, used for comparison
+│   ├── v4_training/                    training history, split, curves
+│   └── archive/                        older checkpoints
+├── notebooks/
+│   ├── train_v4.ipynb                  Kaggle training notebook (v4)
+│   ├── evaluate_for_paper.ipynb        Kaggle evaluation notebook (verified split)
+│   └── archive/                        earlier training notebooks (v2, v3)
+├── scripts/
+│   ├── predict_onnx.py                 ONNX Runtime inference
+│   ├── predict_single_image.py         PyTorch inference
+│   ├── build_train_v4_notebook.py      source of notebooks/train_v4.ipynb
+│   ├── paper_figures/                  figure scripts and the evaluation notebook source
+│   ├── report/                         project report builders
+│   └── presentation/                   slide deck builder
 ├── figures/real/
-│   ├── deck/                       # Tile images, masks, and overlays for 4 sample tiles
-│   ├── measurements/               # JSON files with all measured numbers used in the report
-│   └── report/                     # Figures embedded in the internship report
-│
-├── data/samples/                   # 4 sample satellite tiles (1024×1024, RGB)
+│   ├── v4/paper_results/               evaluation output for v4 and v3 (current)
+│   ├── v3/paper_results/               evaluation output for v3 alone
+│   ├── measurements/                   speed, parity, graph analysis JSON files
+│   └── deck/, report/, fig_*           figures of the project report (August v2 model)
+├── data/samples/                       eight 1024 x 1024 sample tiles
 ├── docs/
-│   ├── report/                     # Internship_Report.pdf, Literature_Validation.pdf
-│   ├── papers/                     # Reference papers and literature review
-│   └── main.tex                    # IEEE paper draft (LaTeX)
-└── demo_app.py                     # Streamlit research demonstration
+│   ├── paper/                          IEEE Access paper (main.tex, figures, class files)
+│   ├── report/                         project report, execution guide
+│   ├── literature/                     reference papers and literature review
+│   ├── proposal/, planning/, presentation/
+│   └── archive/                        superseded drafts and outputs (see note below)
+└── demo_app.py                         Streamlit demonstration
 ```
+
+**Archived material.** `docs/archive/old_paper/` holds an early paper draft whose accuracy numbers
+were never measured; do not cite them. `docs/archive/early_reports/` and
+`docs/archive/backend_outputs/` hold early progress reports and generated outputs of that period.
+The project report in `docs/report/` describes the August v2 model, not v4.
 
 ---
 
-## Quickstart
+## Model history
 
-### 1. Install dependencies
-
-```bash
-pip install -r backend/requirements.txt
-```
-
-### 2. Run inference on a sample tile
-
-```bash
-python scripts/predict_single_image.py data/samples/100034_sat.jpg \
-       --model models/best_model_v2.pth \
-       --output prediction_100034.png
-```
-
-Run on all 4 sample tiles:
-
-```bash
-for tile in data/samples/*.jpg; do
-    python scripts/predict_single_image.py "$tile" \
-           --model models/best_model_v2.pth \
-           --output "prediction_$(basename $tile .jpg).png"
-done
-```
-
-### 3. Run inference with ONNX Runtime (no PyTorch required)
-
-```bash
-pip install -r backend/requirements-edge.txt
-python scripts/predict_onnx.py data/samples/100034_sat.jpg \
-       --model models/mobilevit_v2.onnx \
-       --output prediction_100034_onnx.png
-```
-
-This prints inference latency and road pixel fraction. Expected output on the 4 sample tiles: road fractions of 1.8%, 2.7%, 1.4%, and 11.4%.
-
-### 4. Verify parameter count
-
-```bash
-python backend/scripts/test_model.py
-# Expected: 1,604,657 parameters
-```
-
-### 5. Re-export ONNX from checkpoint
-
-```bash
-python backend/scripts/export_onnx.py \
-       --checkpoint models/best_model_v2.pth \
-       --output models/mobilevit_v2.onnx
-# Prints PyTorch vs ONNX Runtime max absolute difference — expected ~1.8e-7
-```
-
----
-
-## Reproducing Report Results
-
-All numbers in the internship report (`docs/report/Internship_Report.pdf`) are measured and traceable. The table below maps each claim to the script or file that produces it.
-
-| Report claim | How to verify |
-|---|---|
-| 1,604,657 parameters | `python backend/scripts/test_model.py` |
-| ONNX parity 1.76 × 10⁻⁷ | `python scripts/report/measure_onnx_parity.py` |
-| Inference time per tile (CPU) | `python scripts/paper_figures/benchmark_efficiency.py` — writes `figures/real/measurements/efficiency.json` |
-| Pipeline stage comparison (9→3 components, 5,076 bridged pixels on tile 117991) | `python scripts/paper_figures/local_figures.py` — writes `figures/real/measurements/local_figure_stats.json` |
-| Road fraction on 4 sample tiles | `python scripts/predict_onnx.py` on each tile in `data/samples/` — reference values in `figures/real/deck/overlay_stats.json` |
-| Qualitative prediction figures | `python scripts/paper_figures/local_figures.py` — produces `figures/real/fig_pipeline_stages.png`, `fig_collapse.png`, `fig_resolution.png`, `fig_efficiency.png` |
-| Report figures (architecture, outputs) | `python scripts/report/report_figures.py` — produces `figures/real/report/` |
-
-Pre-measured JSON results are already committed in `figures/real/measurements/` so the report can be rebuilt without re-running the benchmarks.
-
-**Note on accuracy metrics (IoU, clDice, APLS):** Full accuracy evaluation against ground truth requires the DeepGlobe held-out validation set and a GPU. The evaluation notebook is `notebooks/evaluate_for_paper.ipynb` — upload it to Kaggle, attach `models/best_model_v2.pth`, and run all cells. This has not been run yet; no accuracy numbers are claimed in the current report.
-
----
-
-## Rebuild the Report
-
-Requires Microsoft Word (for PDF export via COM automation).
-
-```bash
-python scripts/report/build_report.py
-powershell -ExecutionPolicy Bypass -File scripts/report/export_pdf.ps1
-# Output: docs/report/Internship_Report.docx and .pdf
-```
-
-```bash
-python scripts/report/build_validation_doc.py
-powershell -ExecutionPolicy Bypass -File scripts/report/export_pdf.ps1 \
-    -Docx docs/report/Literature_Validation.docx \
-    -Pdf  docs/report/Literature_Validation.pdf
-```
-
----
-
-## Training
-
-Training was run on Kaggle (GPU P100, 16 GB). The committed notebook is `notebooks/model_training_v2.ipynb`.
-
-Key hyperparameters: Adam, lr=3×10⁻⁴, batch size 8, 53 epochs, composite loss (annealed BCE + Dice + SoftClDice), 4-flip test-time augmentation, patience 35.
-
-To retrain locally (requires GPU and the DeepGlobe dataset):
-
-```bash
-python backend/scripts/train.py \
-       --data /path/to/deepglobe \
-       --checkpoint models/best_model_v2.pth \
-       --output models/retrained.pth
-```
-
----
-
-## Evaluation Metrics
-
-| Metric | Type | Purpose |
-|---|---|---|
-| clDice | Topological | Skeleton intersection and centerline connectivity |
-| APLS | Graph / Routing | Path-length similarity on the road graph |
-| IoU / F1 | Pixel-level | Spatial segmentation accuracy |
-| Inference latency | Deployment | Edge-device real-world speed |
+| Model | Training | Test IoU (623 tiles, TTA) | File |
+|---|---|---|---|
+| v2 (August) | 256 crops, validation on resized tiles | not on this split | archived |
+| v3 (October) | 50 epochs, 256 crops, flips and colour, canopy augmentation inactive | 52.7% | `models/best_model_v3_native.pth` |
+| **v4** | 160 epochs, 512 crops, full augmentation, EMA, separate selection set | **61.1%** | `models/best_model_v4.pth` |
 
 ---
 
 ## References
 
-- MobileViT: Light-weight, General-purpose, and Mobile-friendly Vision Transformer (Mehta & Rastegari, 2021)
-- clDice: A Novel Topology-Preserving Loss Function for Tubular Structure Segmentation (Shit et al., 2021)
-- DeepGlobe Road Extraction Challenge (Demir et al., 2018)
-- Pradhan Mantri Gram Sadak Yojana — Ministry of Rural Development, Government of India
+* S. Mehta and M. Rastegari, Separable self attention for mobile vision transformers, TMLR 2023.
+* S. Cui et al., HPLNet: a hierarchical perception lightweight network for road extraction, Front. Remote Sens. 2025.
+* S. Shit et al., clDice: a novel topology preserving loss function for tubular structure segmentation, CVPR 2021.
+* I. Demir et al., DeepGlobe 2018: a challenge to parse the Earth through satellite images, CVPRW 2018.
+* O. Oktay et al., Attention U-Net, MIDL 2018.

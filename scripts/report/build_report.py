@@ -70,7 +70,7 @@ def ckpt_meta(rel):
 
 
 CK = {
-    "baseline": ckpt_meta("models/best_model_new.pth"),
+    "baseline": ckpt_meta("models/archive/best_model_new.pth"),
     "collapsed": ckpt_meta("models/archive/best_model_v2_collapsed_epoch46.pth"),
     "run1": ckpt_meta("models/archive/best_model_v2_epoch18_iou0159.pth"),
     "final": ckpt_meta("models/best_model_v2.pth"),

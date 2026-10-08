@@ -16,6 +16,6 @@ ax.plot(ep, [100 * v for v in col("ema_iou")], color="#c0392b", lw=1.3, label="E
 ax.set_xlabel("Epoch"); ax.set_ylabel("Selection set IoU (%)")
 ax.set_ylim(10, 65); ax.set_xlim(0, 160); ax.grid(alpha=0.3); ax.legend(frameon=False, loc="lower right")
 fig.tight_layout()
-out = os.path.join(REPO, "docs", "paper_access", "figures", "fig_training_curves.pdf")
+out = os.path.join(REPO, "docs", "paper", "figures", "fig_training_curves.pdf")
 fig.savefig(out, bbox_inches="tight"); fig.savefig(out.replace(".pdf", ".png"), dpi=250, bbox_inches="tight")
 print("saved", out)

@@ -92,22 +92,28 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
-# Model Checkpoints and Data
+# Model checkpoints and data: only the current models and the sample tiles are tracked
 *.pth
 *.pt
 *.onnx
 *.engine
-data/
 datasets/
-/models/
+data/*
+!data/samples/
+/models/*
+!/models/best_model_v4.pth
+!/models/best_model_v3_native.pth
+!/models/mobilevit_v2.onnx
+!/models/v4_training/
 !backend/src/models/
 runs/
 wandb/
 .DS_Store
 
-# Local Configs
+# Local configs and scratch
 wandb_local.json
 results/
-data/samples/
 scratch/
-
+out_*.png
+docs/paper/local/
+figures/real/v*/paper_results.zip

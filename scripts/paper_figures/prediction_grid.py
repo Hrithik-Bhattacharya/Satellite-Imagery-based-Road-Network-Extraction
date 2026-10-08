@@ -13,7 +13,7 @@ from backend.src.utils.graph_postprocess import hysteresis_threshold, connect_ca
 
 ONNX = os.path.join(REPO, "models", "mobilevit_v2.onnx")
 TILES = sorted(glob.glob(os.path.join(REPO, "data", "samples", "*.jpg")))
-OUT = os.path.join(REPO, "docs", "paper_access", "figures", "fig_predictions.png")
+OUT = os.path.join(REPO, "docs", "paper", "figures", "fig_predictions.png")
 MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 

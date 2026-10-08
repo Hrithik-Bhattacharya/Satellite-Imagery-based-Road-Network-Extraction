@@ -2,7 +2,9 @@ import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 from skimage.morphology import skeletonize
-from graph_builder import get_skeleton_from_mask, build_graph_from_skeleton, simplify_graph
+import os, sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+from backend.src.utils.graph_builder import get_skeleton_from_mask, build_graph_from_skeleton, simplify_graph
 
 
 def create_synthetic_mask(shape=(256, 256)):

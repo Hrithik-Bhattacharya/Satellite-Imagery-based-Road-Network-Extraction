@@ -45,12 +45,12 @@ FIG_DIR = os.path.join(OUT_DIR, "figures")
 os.makedirs(FIG_DIR, exist_ok=True)
 
 # Which training run's split to reproduce:
-#   "kaggle_glob" : the October run (kaggle_notebook/train_model.py), trained on the Kaggle
+#   "kaggle_glob" : the October run (notebooks/archive/train_v3_kaggle.py), trained on the Kaggle
 #                   DeepGlobe dataset with glob listing, seed-42 shuffle, LAST 10% as validation,
 #                   validated at native resolution. Checkpoint: best_model_v3_native.pth.
 #   "gdrive_listdir": the August runs (Google Drive archive, os.listdir, FIRST 10%, 256x256
 #                   validation). Checkpoints: best_model_v2.pth and earlier.
-#   "v4"          : the v4 run (kaggle_notebook/train_v4.ipynb): same 623 test tiles as kaggle_glob,
+#   "v4"          : the v4 run (notebooks/train_v4.ipynb): same 623 test tiles as kaggle_glob,
 #                   best epoch chosen on a separate selection set; v3 is evaluated alongside.
 SPLIT_MODE = os.environ.get("EVAL_SPLIT_MODE", "v4")
 GLOB_SPLIT = SPLIT_MODE in ("kaggle_glob", "v4")
@@ -60,7 +60,7 @@ if IN_KAGGLE:
 
 if GLOB_SPLIT:
     DEEPGLOBE_TRAIN = os.environ.get("EVAL_KAGGLE_TRAIN")
-    if not DEEPGLOBE_TRAIN:   # same auto-detection as kaggle_notebook/train_model.py
+    if not DEEPGLOBE_TRAIN:   # same auto-detection as notebooks/archive/train_v3_kaggle.py
         for root, dirs, files in os.walk("/kaggle/input"):
             if "train" in dirs:
                 try:
@@ -219,7 +219,7 @@ def list_ids(img_dir, mask_dir):
 
 
 if GLOB_SPLIT:
-    # Identical to kaggle_notebook/train_model.py: glob order, mask filter, random.seed(42),
+    # Identical to notebooks/archive/train_v3_kaggle.py: glob order, mask filter, random.seed(42),
     # random.shuffle, first 90% train, last 10% validation.
     ALL_IDS = [os.path.basename(f).replace("_sat.jpg", "")
                for f in glob.glob(os.path.join(TRAIN_DIR, "*_sat.jpg"))]

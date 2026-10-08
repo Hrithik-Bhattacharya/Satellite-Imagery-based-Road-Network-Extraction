@@ -21,7 +21,7 @@ except ImportError:
     sys.exit(1)
 
 def load_model(device):
-    model_path = os.path.join(repo_root, "backend", "models", "best_model.pth")
+    model_path = os.path.join(repo_root, "models", "best_model_v4.pth")
     model = MobileViT_v2(num_classes=1, width_mult=1.0)
     if os.path.exists(model_path):
         state_dict = torch.load(model_path, map_location=device, weights_only=True)

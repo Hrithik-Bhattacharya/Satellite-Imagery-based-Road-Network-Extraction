@@ -11,7 +11,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyBboxPatch, Circle, Rectangle
 
-OUT = os.path.join(os.path.dirname(__file__), "..", "..", "docs", "paper_access", "figures")
+OUT = os.path.join(os.path.dirname(__file__), "..", "..", "docs", "paper", "figures")
 plt.rcParams.update({"font.family": "DejaVu Sans", "mathtext.fontset": "dejavusans"})
 
 NAVY, BLUE, TEAL, PURPLE = "#1b2a49", "#1f4e9c", "#1d6b52", "#3d2b7a"

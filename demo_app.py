@@ -329,7 +329,7 @@ st.markdown("""
 tab_extraction, tab_metrics, tab_architecture, tab_application = st.tabs([
     "Live Inference & Segmentation",
     "Benchmark Evaluation",
-    "Model Architecture & Novelty",
+    "Model Architecture",
     "PMGSY Infrastructure Auditing"
 ])
 
@@ -349,19 +349,19 @@ with tab_extraction:
                 <div class="metric-sub">94.8% reduction vs U-Net (31.0M)</div>
             </div>
             <div class="metric-box">
-                <div class="metric-label">ONNX Edge Payload</div>
-                <div class="metric-val">0.87 MB</div>
-                <div class="metric-sub neutral">Drone & Field Laptop Ready</div>
+                <div class="metric-label">ONNX Model Size</div>
+                <div class="metric-val">6.2 MB</div>
+                <div class="metric-sub neutral">1.27 s per 1024² tile on a laptop CPU</div>
             </div>
             <div class="metric-box accent">
-                <div class="metric-label">Topological clDice</div>
-                <div class="metric-val">81.62%</div>
-                <div class="metric-sub">+8.42% over baseline</div>
+                <div class="metric-label">IoU (623 test tiles)</div>
+                <div class="metric-val">61.1%</div>
+                <div class="metric-sub">4-flip TTA, threshold 0.5</div>
             </div>
             <div class="metric-box accent">
-                <div class="metric-label">Routing Navigability (APLS)</div>
-                <div class="metric-val">76.80%</div>
-                <div class="metric-sub">+9.30% over baseline</div>
+                <div class="metric-label">clDice (623 test tiles)</div>
+                <div class="metric-val">84.5%</div>
+                <div class="metric-sub">Relaxed F1 86.7%</div>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -442,85 +442,56 @@ with tab_extraction:
             st.image(skel, caption="1-Pixel Centerline Graph (Preserves Network Topology for Pathfinding)", use_container_width=True)
 
 with tab_metrics:
-    st.markdown('<div class="panel-header">Architectural and Quantitative Benchmark Comparison</div>', unsafe_allow_html=True)
+    st.markdown('<div class="panel-header">Measured Results (v4 model)</div>', unsafe_allow_html=True)
     st.markdown("""
-    Standard segmentation models (U-Net, DeepLabv3+) optimize pixel-wise cross-entropy, causing 
-    catastrophic topological disconnection on thin rural roads. The proposed MobileViT v2 + clDice 
-    architecture enforces spatial contiguity with a 94.8% parameter reduction.
+    Accuracy is measured on 623 DeepGlobe tiles that were never used for training or model selection
+    (see `figures/real/v4/paper_results/`). Cost is measured on an Intel Core i5-1035G4 laptop CPU for one
+    1024 x 1024 tile (`figures/real/measurements/efficiency.json`). The reference networks were compared
+    on cost only; their accuracy on this split has not been measured.
     """)
 
-    # Comparison Table
     st.markdown("""
     <table class="academic-table">
         <thead>
-            <tr>
-                <th>Model Architecture</th>
-                <th>Backbone Type</th>
-                <th>Parameters</th>
-                <th>Model Size</th>
-                <th>clDice (%)</th>
-                <th>APLS (%)</th>
-                <th>IoU (%)</th>
-                <th>Latency (CPU)</th>
-            </tr>
+            <tr><th>Inference setting (v4)</th><th>IoU (%)</th><th>F1 (%)</th><th>Relaxed F1 (%)</th>
+                <th>clDice (%)</th><th>Road parts / tile</th></tr>
         </thead>
         <tbody>
-            <tr>
-                <td>Baseline U-Net (Ronneberger et al.)</td>
-                <td>Standard CNN</td>
-                <td>31.04 M</td>
-                <td>~118.0 MB</td>
-                <td>73.20%</td>
-                <td>67.50%</td>
-                <td>68.10%</td>
-                <td>~1800 ms</td>
-            </tr>
-            <tr>
-                <td>DeepLabv3+ (Chen et al.)</td>
-                <td>ResNet-50</td>
-                <td>40.20 M</td>
-                <td>~155.0 MB</td>
-                <td>74.80%</td>
-                <td>69.10%</td>
-                <td>70.40%</td>
-                <td>~2400 ms</td>
-            </tr>
-            <tr>
-                <td>D-LinkNet (Zhou et al.)</td>
-                <td>ResNet-34 + Dilated</td>
-                <td>21.20 M</td>
-                <td>~81.0 MB</td>
-                <td>78.40%</td>
-                <td>73.30%</td>
-                <td>72.80%</td>
-                <td>~1450 ms</td>
-            </tr>
-            <tr class="highlight-row">
-                <td><strong>MobileViT v2 + clDice (Proposed)</strong></td>
-                <td><strong>Linear Attention + Strip Conv</strong></td>
-                <td><strong>1.60 M</strong></td>
-                <td><strong>0.87 MB</strong></td>
-                <td><strong>81.62%</strong></td>
-                <td><strong>76.80%</strong></td>
-                <td><strong>74.60%</strong></td>
-                <td><strong>~550-700 ms</strong></td>
-            </tr>
+            <tr><td>Single pass, threshold 0.5</td><td>59.8</td><td>74.8</td><td>85.9</td><td>84.2</td><td>17</td></tr>
+            <tr class="highlight-row"><td><strong>4-flip TTA, threshold 0.5</strong></td><td><strong>61.1</strong></td>
+                <td><strong>75.8</strong></td><td><strong>86.7</strong></td><td><strong>84.5</strong></td><td>13</td></tr>
+            <tr><td>4-flip TTA + hysteresis + gap bridging</td><td>52.6</td><td>69.0</td><td>80.7</td><td>75.8</td><td>2</td></tr>
+        </tbody>
+    </table>
+    <br>
+    <table class="academic-table">
+        <thead>
+            <tr><th>Model</th><th>Parameters</th><th>GFLOPs</th><th>Weights</th><th>CPU time per tile</th></tr>
+        </thead>
+        <tbody>
+            <tr><td>U-Net</td><td>31.04 M</td><td>1541.4</td><td>118.4 MB</td><td>14.75 s</td></tr>
+            <tr><td>D-LinkNet34</td><td>31.10 M</td><td>212.6</td><td>118.6 MB</td><td>2.48 s</td></tr>
+            <tr><td>DeepLabV3 MobileNetV3</td><td>11.02 M</td><td>78.6</td><td>42.0 MB</td><td>1.00 s</td></tr>
+            <tr><td>LR-ASPP MobileNetV3</td><td>3.22 M</td><td>15.7</td><td>12.3 MB</td><td>0.49 s</td></tr>
+            <tr class="highlight-row"><td><strong>Proposed (ONNX Runtime)</strong></td><td><strong>1.60 M</strong></td>
+                <td><strong>60.7</strong></td><td><strong>6.2 MB</strong></td><td><strong>1.27 s</strong></td></tr>
         </tbody>
     </table>
     """, unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
-    
     col_comp1, col_comp2 = st.columns(2)
     with col_comp1:
-        if os.path.exists("figures/fig8_qualitative_comparison.png"):
-            st.image("figures/fig8_qualitative_comparison.png", caption="Fig 8: Qualitative Comparison across Baseline Networks", use_container_width=True)
+        if os.path.exists("figures/real/v4/paper_results/figures/fig_eval_qualitative.png"):
+            st.image("figures/real/v4/paper_results/figures/fig_eval_qualitative.png",
+                     caption="Test tiles: image, ground truth, and v4 prediction", use_container_width=True)
     with col_comp2:
-        if os.path.exists("figures/fig7_ablation_study.png"):
-            st.image("figures/fig7_ablation_study.png", caption="Fig 7: Ablation Analysis (Strip Convolutions, Channel Shift, clDice Loss)", use_container_width=True)
+        if os.path.exists("figures/real/v4/paper_results/figures/fig_eval_ablation.png"):
+            st.image("figures/real/v4/paper_results/figures/fig_eval_ablation.png",
+                     caption="Effect of each inference and postprocessing step (623 test tiles)", use_container_width=True)
 
 with tab_architecture:
-    st.markdown('<div class="panel-header">Methodology and Novel Technical Contributions</div>', unsafe_allow_html=True)
+    st.markdown('<div class="panel-header">Methodology</div>', unsafe_allow_html=True)
     
     c_m1, c_m2 = st.columns(2)
     with c_m1:
@@ -529,12 +500,12 @@ with tab_architecture:
         Standard Vision Transformers require quadratic complexity $O(N^2)$, making high-resolution satellite tiles computationally intractable. MobileViT v2 computes linear self-attention $O(N \cdot d)$ by encoding spatial patches into a scalar projection vector, maintaining global context to bridge tree occlusions.
 
         **2. Factorized 1D Strip Convolutions ($1\\times3 \\to 3\\times1$)**  
-        Standard square convolutions ($3\\times3$) are isotropic and parameter-heavy. We factorize them into sequential 1D directional strip convolutions, introducing a strong inductive bias for elongated, tubular road corridors while reducing convolutional parameters by **33%**.
+        Standard square convolutions ($3\\times3$) are isotropic and parameter-heavy. Following HPLNet (Cui et al., 2025), they are factorized into a 1 x 3 and a 3 x 1 convolution, which suits long, thin road shapes and uses 6 weights instead of 9.
         """)
     with c_m2:
         st.markdown("""
         **3. Zero-Parameter Channel Shift Operator**  
-        We displace 25% of feature channels by $\pm8$ pixels across cardinal directions prior to attention blocks. This expands the effective spatial receptive field without adding a single multiply-accumulate operation or parameter.
+        Also from HPLNet: 25% of the feature channels are moved by 2 pixels up, down, left, or right before each attention block. This widens what each position sees without adding any parameters.
 
         **4. Differentiable clDice Loss Formulation**  
         Centerline-Dice calculates overlap directly on the soft-skeletonized prediction and ground-truth masks:
@@ -543,24 +514,23 @@ with tab_architecture:
         """)
 
     st.markdown("<br>", unsafe_allow_html=True)
-    if os.path.exists("figures/fig2_network_architecture.png"):
-        st.image("figures/fig2_network_architecture.png", caption="Fig 2: Complete MobileViT v2 Hybrid Architecture with Strip Convolutions and Attention Gates", use_container_width=True)
-        
-    if os.path.exists("figures/fig5_graph_extraction_gap_bridging.png"):
-        st.image("figures/fig5_graph_extraction_gap_bridging.png", caption="Fig 5: Multi-Strategy Topological Gap Healing Mechanism", use_container_width=True)
+    if os.path.exists("docs/paper/figures/fig_network.png"):
+        st.image("docs/paper/figures/fig_network.png", caption="Network architecture", use_container_width=True)
+    if os.path.exists("docs/paper/figures/fig_pipeline_stages.png"):
+        st.image("docs/paper/figures/fig_pipeline_stages.png", caption="Postprocessing stages on tile 117991", use_container_width=True)
 
 with tab_application:
     st.markdown('<div class="panel-header">PMGSY Infrastructure Auditing & Spatial Network Criticality</div>', unsafe_allow_html=True)
     st.markdown("""
-    Under India's **Pradhan Mantri Gram Sadak Yojana (PMGSY)**, over 750,000 km of rural roads connect habitations to economic centers.
+    Under India's **Pradhan Mantri Gram Sadak Yojana (PMGSY)**, all weather rural roads connect habitations to markets and services.
     Automated satellite monitoring provides three concrete capabilities:
     
     1. **Monsoon Washout and Encroachment Auditing:** Rapid comparison against baseline vector traces detects severed links and deterioration.
-    2. **Autonomous Drone (UAV) Deployment:** The compiled sub-1MB ONNX payload operates locally aboard companion computers without internet access.
+    2. **Autonomous Drone (UAV) Deployment:** The 6.2 MB ONNX model runs on a CPU without a deep learning framework or internet access.
     3. **Spatial Graph Resilience (Betweenness Centrality):** Road vectors are converted into NetworkX planar graphs $G = (V, E)$. Nodes with extreme Betweenness Centrality are identified as critical infrastructural bottlenecks for disaster relief.
     """)
 
-    if os.path.exists("figures/fig6_centrality_resilience.png"):
-        st.image("figures/fig6_centrality_resilience.png", caption="Fig 6: Betweenness Centrality and Infrastructure Resilience Analysis", use_container_width=True)
+    if os.path.exists("docs/paper/figures/fig_graph_analysis.png"):
+        st.image("docs/paper/figures/fig_graph_analysis.png", caption="Betweenness centrality and resilience of predicted road graphs", use_container_width=True)
 
-    st.info("Technical Progress Report available at: Technical_Progress_Report_Rural_Roads.pdf (IEEE Conference Standard)")
+    st.info("Paper source: docs/paper/main.tex")

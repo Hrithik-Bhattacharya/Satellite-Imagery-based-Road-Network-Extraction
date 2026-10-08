@@ -1,4 +1,4 @@
-"""Builds kaggle_notebook/train_v4.ipynb: a full, resumable training run for the v4 model.
+"""Builds notebooks/train_v4.ipynb: a full, resumable training run for the v4 model.
 
 Recipe (changes from v3):
   * 160 epochs, linear warmup then cosine decay, no early stopping;
@@ -8,7 +8,7 @@ Recipe (changes from v3):
   * exponential moving average (EMA) of the weights;
   * full training state saved every epoch; a second Kaggle session resumes automatically.
 
-Usage (repo root): python kaggle_notebook/build_train_v4_notebook.py
+Usage (repo root): python scripts/build_train_v4_notebook.py
 """
 import json
 import os
@@ -265,7 +265,7 @@ def main():
             compile(src, "<cell>", "exec")
             cell.update({"execution_count": None, "outputs": []})
         nb["cells"].append(cell)
-    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "train_v4.ipynb")
+    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "notebooks", "train_v4.ipynb")
     json.dump(nb, open(out, "w", encoding="utf-8"), indent=1)
     print("wrote", out)
 

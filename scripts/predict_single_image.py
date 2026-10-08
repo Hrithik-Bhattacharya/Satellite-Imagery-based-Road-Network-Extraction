@@ -44,17 +44,11 @@ def predict_single_image(image_path, model_path=None, output_path="prediction_re
     print(f"Using device: {device}")
 
     # Determine default model path if not explicitly provided.
-    # Preference order: a freshly (correctly) retrained model in models/, then the
-    # last known-good canopy-resilient checkpoint, then legacy root-level locations
-    # for backward compatibility with older checkouts.
+    # Preference order: the current v4 model, then v3. Older checkpoints are in models/archive/.
     if model_path is None or model_path == "best_model.pth":
         candidates = [
-            os.path.join("models", "best_model_v2.pth"),
-            os.path.join("models", "best_model_new.pth"),
-            os.path.join("models", "best_model.pth"),
-            "best_model_new.pth",
-            "best_model_v2.pth",
-            "best_model.pth",
+            os.path.join("models", "best_model_v4.pth"),
+            os.path.join("models", "best_model_v3_native.pth"),
         ]
         for candidate in candidates:
             if os.path.exists(candidate):

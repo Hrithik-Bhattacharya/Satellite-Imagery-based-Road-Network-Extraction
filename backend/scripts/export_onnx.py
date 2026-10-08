@@ -3,7 +3,7 @@ export_onnx.py -- Export a trained MobileViT_v2 checkpoint to ONNX for edge depl
 
 Usage (from repo root):
     python backend/scripts/export_onnx.py \
-        --checkpoint models/best_model_new.pth \
+        --checkpoint models/best_model_v4.pth \
         --output models/mobilevit_v2.onnx
 
 The exported graph includes the sigmoid activation, so ONNX Runtime output is a
@@ -35,14 +35,13 @@ class SigmoidWrapper(nn.Module):
 
 def find_default_checkpoint(repo_root: str) -> str:
     candidates = [
-        os.path.join(repo_root, "models", "best_model_v2.pth"),
-        os.path.join(repo_root, "models", "best_model_new.pth"),
-        os.path.join(repo_root, "models", "best_model.pth"),
+        os.path.join(repo_root, "models", "best_model_v4.pth"),
+        os.path.join(repo_root, "models", "best_model_v3_native.pth"),
     ]
     for c in candidates:
         if os.path.exists(c):
             return c
-    return candidates[1]  # best_model_new.pth, used for the error message if nothing found
+    return candidates[0]  # best_model_v4.pth, used for the error message if nothing found
 
 
 def load_checkpoint(checkpoint_path: str, width_mult: float) -> nn.Module:

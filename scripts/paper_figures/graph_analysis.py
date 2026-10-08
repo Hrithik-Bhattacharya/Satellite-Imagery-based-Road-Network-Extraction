@@ -13,7 +13,7 @@ sys.path.insert(0, REPO)
 from backend.src.utils.graph_postprocess import hysteresis_threshold, connect_canopy_gaps
 
 
-OUT_FIG = os.path.join(REPO, "docs", "paper_access", "figures", "fig_graph_analysis.pdf")
+OUT_FIG = os.path.join(REPO, "docs", "paper", "figures", "fig_graph_analysis.pdf")
 OUT_JSON = os.path.join(REPO, "figures", "real", "measurements", "graph_analysis.json")
 MEAN = np.array([0.485, 0.456, 0.406], np.float32)
 STD = np.array([0.229, 0.224, 0.225], np.float32)
