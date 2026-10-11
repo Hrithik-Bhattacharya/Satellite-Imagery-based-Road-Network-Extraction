@@ -54,23 +54,23 @@
 \history{Date of publication xxxx 00, 0000, date of current version xxxx 00, 0000.}
 \doi{10.1109/ACCESS.2026.DOI}
 
-\title{A Lightweight Topology Aware MobileViT Network for Rural Road Extraction on Edge Devices}
+\title{A Lightweight Connectivity Aware MobileViT Network for Rural Road Extraction on CPU Hardware}
 
 \author{\uppercase{Dilraj Singh}\authorrefmark{1} and
 \uppercase{Arya Wadhwa}\authorrefmark{1}}
 
 \address[1]{Department of Computer Science and Engineering (Artificial Intelligence and Machine Learning), R. V. College of Engineering, Bengaluru 560059, India (e-mail: dilrajsingh.ai24@rvce.edu.in; aryawadhwa.ai24@rvce.edu.in)}
 
-\tfootnote{This work was carried out under the IEEE Computer Society Bangalore Chapter Internship and Mentorship Program 2026. It received no specific funding.}
+\tfootnote{This work received no specific funding.}
 
 \markboth
-{D. Singh \headeretal: Lightweight Topology Aware MobileViT Network for Rural Road Extraction}
-{D. Singh \headeretal: Lightweight Topology Aware MobileViT Network for Rural Road Extraction}
+{D. Singh \headeretal: Lightweight Connectivity Aware MobileViT Network for Rural Road Extraction}
+{D. Singh \headeretal: Lightweight Connectivity Aware MobileViT Network for Rural Road Extraction}
 
 \corresp{Corresponding author: Dilraj Singh (e-mail: dilrajsingh.ai24@rvce.edu.in).}
 
 \begin{abstract}
-Rural road records need regular updating, and satellite images can help if a computer can find the roads automatically on low cost hardware. We built a small road extraction network with 1.60 million parameters, based on the MobileViT v2 vision transformer, and trained it to keep roads connected rather than only to classify pixels. A simple postprocessing step then joins road pieces that are separated by trees. We tested the network on 623 tiles of the public DeepGlobe dataset that it never saw during training. It reaches an intersection over union of 61.1\%, a relaxed F1 score of 86.7\%, and a centreline Dice score of 84.5\%. Exported to the Open Neural Network Exchange format, it processes one 1024 by 1024 pixel tile in 1.27 s on an ordinary laptop processor, with no graphics card. Roads under tree cover are the hardest case: the network finds 60.3\% of them, against 80.3\% of roads in the open. The postprocessing raises this to 75.1\% and reduces the number of broken road pieces per tile from 13 to 2, at some cost in pixel accuracy. We also show how the extracted network can be analysed as a graph to find junctions that many routes depend on. All code, the trained model, and the measurement files are released.
+Rural road maps need regular updating, and satellite images can help if roads are found automatically on low cost hardware. Accurate road extraction networks often have tens of millions of parameters and need a graphics card. Small networks are cheaper, but they are usually trained to classify single pixels, so roads hidden by trees come out broken, and they are rarely timed on an ordinary processor. We present a road extraction network with 1.60 million parameters that combines a MobileViT v2 transformer encoder, attention gates, and road shaped strip convolutions. It is trained with a connectivity aware loss (clDice), a check that rejects collapsed models, and strong augmentation that includes synthetic tree shadows. A postprocessing step then joins road pieces separated by trees. On 623 tiles of the DeepGlobe dataset that were never used for training or model selection, the network reaches an intersection over union of 61.1\%, a relaxed F1 score of 86.7\%, and a centreline Dice score of 84.5\%. Exported to the Open Neural Network Exchange format, it processes one 1024 by 1024 pixel tile in 1.27 s on a laptop processor without a graphics card. Roads under tree cover are the hardest case: the network finds 60.3\% of them, against 80.3\% of open roads. Postprocessing raises this to 75.1\% and reduces the median number of road pieces per tile from 13 to 2. The extracted network is also analysed as a graph to find critical junctions. Code, model, and measurement files are released.
 \end{abstract}
 
 \begin{keywords}
@@ -86,9 +86,11 @@ Edge computing, image segmentation, remote sensing, road extraction, topology, v
 
 \PARstart{R}{ural} roads connect villages to markets, schools, and hospitals. In India, the Pradhan Mantri Gram Sadak Yojana (PMGSY) builds and maintains all weather rural roads, but keeping the road maps up to date still depends on field surveys and manual tracing~\cite{pmgsy}. Satellite images with a resolution of 0.5~m per pixel show these roads clearly enough to map them automatically. Doing so is still hard for three reasons. Rural roads are thin and cover only a few percent of an image. Their colour is close to that of bare soil and dry fields. Trees and their shadows often hide parts of a road, so the road looks broken in the image even though it is continuous on the ground.
 
-Deep learning models such as U-Net~\cite{ronneberger2015unet} and D-LinkNet~\cite{zhou2018dlinknet} find roads well, but they have more than 30 million parameters and need a graphics card to run quickly. Smaller models run on ordinary laptops, but they are usually trained to get individual pixels right. Such training hardly penalises a short gap in a long road, so the predicted roads come out in pieces, which makes them less useful as a map.
+\emph{Why automatic models are needed.} Tracing roads by hand on images is slow, and it has to be repeated each time new roads are built or old ones are damaged. A model that converts each new satellite image into a road map can keep the records current across thousands of villages at little cost. The model should also be small. District offices and field teams usually work on ordinary laptops without a graphics card, images may have to be processed offline where the internet connection is poor, and a small model is cheaper to run on large areas. A road map is also only useful if it is connected: a route planner or a flood study needs to know which villages can be reached, and a road broken into pieces answers this wrongly.
 
-In this work we ask how good a model with fewer than two million parameters can be if it is trained to keep roads connected and tested at the same image size it would see in practice. Our contributions are:
+\emph{What is lacking.} Deep learning models such as U-Net~\cite{ronneberger2015unet} and D-LinkNet~\cite{zhou2018dlinknet} find roads well, but they have more than 30 million parameters and need a graphics card to run quickly. Recent lightweight road networks~\cite{cui2025hplnet} come close to the accuracy of the large ones with only a few million parameters, but they are reported through parameter counts, operation counts, and overall pixel scores. Three questions are left open. First, most networks are trained to get individual pixels right; such training hardly penalises a short gap in a long road, so the predicted roads come out in pieces. Second, overall scores hide the hardest case, roads under trees, which matters most for rural areas. Third, the actual running time on a processor without a graphics card is rarely measured.
+
+In this work we ask how good a model with fewer than two million parameters can be if it is trained to keep roads connected, tested at the same image size it would see in practice, and timed on an ordinary laptop. Our contributions are:
 
 \begin{enumerate}
 
@@ -104,22 +106,93 @@ In this work we ask how good a model with fewer than two million parameters can 
 
 \end{enumerate}
 
-Section~\ref{sec:related} reviews related work, Section~\ref{sec:method} describes our method, Section~\ref{sec:setup} the experiments, and Section~\ref{sec:results} the results. Section~\ref{sec:discussion} discusses limitations, and Section~\ref{sec:conclusion} concludes.
+\emph{Novelty.} The building blocks of the network are known, and we credit each one to its source. What is new is how they are put together and tested. To our knowledge, this is the first road extraction network below two million parameters that joins a separable self attention encoder with a connectivity loss, a guard against the collapse that this loss can cause, and geometric bridging of gaps under trees. It is also evaluated in the way it would be used: on whole $1024 \times 1024$ tiles rather than resized ones, with roads under trees scored separately, with the connectivity of the output counted, and with the running time measured on a laptop processor. Finally, the extracted roads are turned into a graph that shows which junctions a region depends on, which links the segmentation result to planning use.
+
+Section~\ref{sec:related} reviews related work, Section~\ref{sec:method} describes our method, Section~\ref{sec:setup} the experiments, and Section~\ref{sec:results} the results. Section~\ref{sec:discussion} compares heavy and lightweight models, discusses use on other datasets and the limitations of this work, and Section~\ref{sec:conclusion} concludes.
 
 \section{Related Work}
 \label{sec:related}
 
-\subsection{Road Segmentation Networks}
+\subsection{Road Extraction Datasets}
 
-Most methods treat road extraction as image segmentation: every pixel is labelled road or background. U-Net~\cite{ronneberger2015unet} and DeepLabV3~\cite{chen2017deeplab} are common choices, and D-LinkNet~\cite{zhou2018dlinknet} won the DeepGlobe 2018 road challenge~\cite{demir2018deepglobe}. These models are accurate but large.
+Table~\ref{tab:datasets} lists the public datasets most used for road extraction. They differ in resolution, in region, and in how the roads are labelled. The Massachusetts Roads dataset~\cite{mnih2013thesis} was made by drawing OpenStreetMap centre lines with a fixed width on 1~m aerial images of the state of Massachusetts, USA, so its labels do not follow the true road width. SpaceNet 3~\cite{vanetten2018spacenet} covers four cities at 0.3~m and labels roads as centre line graphs, which suits graph metrics such as APLS. CHN6-CUG~\cite{zhu2021chn6} covers urban areas of six Chinese cities. DeepGlobe~\cite{demir2018deepglobe} is the only one of these whose images come mainly from rural and suburban areas of South and South East Asia, including India, and whose labels are drawn as pixel masks. Its roads are thin, unpaved, and often partly covered by trees, which is the setting of this work, so we use it.
+
+\begin{table}[t]
+\caption{Public Road Extraction Datasets}
+\label{tab:datasets}
+\setlength{\tabcolsep}{2pt}
+\tablebodyfont
+\begin{tabular}{|p{42pt}|p{40pt}|p{30pt}|p{60pt}|p{46pt}|}
+\hline
+Dataset & Images & Labelled tiles & Region & Labels \\
+\hline
+DeepGlobe~\cite{demir2018deepglobe} & 0.5~m, $1024^2$, RGB & 6,226$^{\mathrm{a}}$ & Thailand, Indonesia, India; mostly rural & Pixel masks \\
+Massachusetts~\cite{mnih2013thesis} & 1~m, $1500^2$, RGB & 1,171 & Massachusetts, USA & OSM centre lines, fixed width \\
+SpaceNet 3~\cite{vanetten2018spacenet} & 0.3~m, $1300^2$ & about 2,550 & Las Vegas, Paris, Shanghai, Khartoum & Centre line graphs \\
+CHN6-CUG~\cite{zhu2021chn6} & 0.5~m, $512^2$, RGB & 4,511 & Six Chinese cities & Pixel masks \\
+\hline
+\multicolumn{5}{p{230pt}}{$^{\mathrm{a}}$Of 8,570 tiles in total; only the training part of the challenge has public labels.}
+\end{tabular}
+\end{table}
+
+\subsection{Large Segmentation Networks}
+
+Most methods treat road extraction as image segmentation: every pixel is labelled road or background. Fully convolutional networks (FCN)~\cite{long2015fcn} first made this possible end to end, and U-Net~\cite{ronneberger2015unet} added skip connections that pass fine detail from the encoder to the decoder. DeepLabV3~\cite{chen2017deeplab} uses dilated convolutions to see a wider area. D-LinkNet~\cite{zhou2018dlinknet}, which won the DeepGlobe 2018 road challenge~\cite{demir2018deepglobe}, combines a ResNet encoder pretrained on ImageNet with dilated convolutions in the centre of the network, and reports an IoU of 64.1\% on the challenge validation set. CoANet~\cite{mei2021coanet} adds strip convolutions and a connectivity attention module to reduce broken roads. These networks are accurate, but they have between 13 and 77 million parameters (Table~\ref{tab:literature}) and are normally run on a graphics card.
 
 \subsection{Lightweight Networks}
 
-MobileNetV2~\cite{sandler2018mobilenetv2} and MobileNetV3~\cite{howard2019mobilenetv3} were designed to run on phones. MobileViT~\cite{mehta2022mobilevit} adds small transformer blocks to such networks so that each pixel can use information from the whole image, and MobileViT v2~\cite{mehta2023separable} makes these blocks cheaper. HPLNet~\cite{cui2025hplnet} is a small network made for roads; we reuse two of its building blocks and do not claim them as our own.
+MobileNetV2~\cite{sandler2018mobilenetv2} and MobileNetV3~\cite{howard2019mobilenetv3} were designed to run on phones, mainly by replacing normal convolutions with cheaper depthwise ones. MobileViT~\cite{mehta2022mobilevit} adds small transformer blocks to such networks so that each pixel can use information from the whole image, and MobileViT v2~\cite{mehta2023separable} makes these blocks cheaper with separable self attention, whose cost grows only linearly with image size. HPLNet~\cite{cui2025hplnet} is a small network made for roads, with 2.88 million parameters. It uses strip convolutions for long thin shapes and channel shifts to widen the view of each layer at no cost; we reuse these two blocks and do not claim them as our own. Its authors also retrained several large and small networks on DeepGlobe and Massachusetts under one setting, which gives a fair view of heavy against lightweight models (Table~\ref{tab:literature}).
 
 \subsection{Keeping Roads Connected}
 
-A loss that scores each pixel separately barely notices a small gap in a long road. The clDice score~\cite{shit2021cldice}, first proposed for blood vessels, compares the centre lines of the predicted and true shapes instead, so gaps matter. Other methods, such as RoadTracer~\cite{bastani2018roadtracer} and Sat2Graph~\cite{he2020sat2graph}, predict the road network directly as a graph, but they are slower to run. The APLS score~\cite{vanetten2018spacenet} compares travel distances along the predicted and true road graphs.
+A loss that scores each pixel separately barely notices a small gap in a long road. The clDice score~\cite{shit2021cldice}, first proposed for blood vessels, compares the centre lines of the predicted and true shapes instead, so gaps matter. Other methods, such as RoadTracer~\cite{bastani2018roadtracer} and Sat2Graph~\cite{he2020sat2graph}, predict the road network directly as a graph, but they rely on an iterative search (RoadTracer) or a complex graph decoding step (Sat2Graph) and are slower to run. The APLS score~\cite{vanetten2018spacenet} compares travel distances along the predicted and true road graphs.
+
+\subsection{Reported Results}
+
+Table~\ref{tab:literature} collects published results. Rows marked a come from one study~\cite{cui2025hplnet} in which every network was trained and tested on the same split, so they can be compared with each other. They show that a small network can be as accurate as a large one: PMFSNet (0.99 million parameters) and HPLNet (2.88 million) score 65.1\% and 66.6\% IoU on DeepGlobe, above D-LinkNet (31.1 million, 64.4\%) and CoANet (59.2 million, 63.3\%). Our result is measured on a different split of DeepGlobe, without pretraining, and is therefore given for orientation only; it cannot be ranked against the other rows.
+
+\begin{table}[t]
+\caption{Published Road Extraction Results (IoU, \%)}
+\label{tab:literature}
+\setlength{\tabcolsep}{3pt}
+\tablebodyfont
+\begin{tabular}{|l|c|r|c|c|}
+\hline
+Method & Type & Params (M) & DeepGlobe & Mass. \\
+\hline
+FCN$^{\mathrm{a}}$ & Heavy & 18.64 & 44.12 & 39.62 \\
+U-Net$^{\mathrm{a}}$ & Heavy & 13.39 & 46.10 & 51.28 \\
+D-LinkNet$^{\mathrm{a}}$ & Heavy & 31.10 & 64.37 & 61.46 \\
+CoANet$^{\mathrm{a}}$ & Heavy & 59.15 & 63.31 & 61.86 \\
+RcfsNet$^{\mathrm{a}}$ & Heavy & 76.74 & 67.40 & 63.11 \\
+CSWin-UNet$^{\mathrm{a}}$ & Heavy & 23.57 & 64.92 & 63.50 \\
+PMFSNet$^{\mathrm{a}}$ & Light & 0.99 & 65.06 & 63.14 \\
+HPLNet$^{\mathrm{a}}$ & Light & 2.88 & 66.61 & 64.32 \\
+\hline
+D-LinkNet$^{\mathrm{b}}$ & Heavy & 31.10 & 64.12 & n/a \\
+Proposed$^{\mathrm{c}}$ & Light & 1.60 & 61.1 & not tested \\
+\hline
+\multicolumn{5}{p{225pt}}{$^{\mathrm{a}}$Trained and reported by Cui \emph{et al.}~\cite{cui2025hplnet} on their split of each dataset. $^{\mathrm{b}}$Original paper~\cite{zhou2018dlinknet}, DeepGlobe challenge validation set. $^{\mathrm{c}}$This work, 623 test tiles of our own split (Section~\ref{sec:setup}), four flip TTA. Results on different splits are not directly comparable. Parameter counts are as reported; the U-Net in Table~\ref{tab:cost} uses the original channel widths and has 31.04 million. Heavy: more than 10 million parameters.}
+\end{tabular}
+\end{table}
+
+\subsection{Open Problems}
+
+The review points to four problems that remain open for rural road mapping on low cost hardware.
+
+\begin{enumerate}
+
+\item \emph{Cost on real hardware.} Lightweight networks are compared by parameter and operation counts, which do not always predict the running time on a processor without a graphics card (Table~\ref{tab:cost} shows an example).
+
+\item \emph{Broken roads.} Most networks, large or small, are trained with pixel losses, so roads hidden by trees are often predicted in pieces.
+
+\item \emph{Hidden failure cases.} Results are reported as one overall score, which hides how well roads under trees are found and how many pieces the predicted network falls into.
+
+\item \emph{Use of the output.} The predicted mask is rarely turned into a road graph that can answer planning questions, such as which junctions many routes depend on.
+
+\end{enumerate}
+
+Our work addresses these problems in turn: a network with 1.60 million parameters whose running time is measured on a laptop processor (problem 1), a connectivity aware loss with a collapse guard and gap bridging (problem 2), separate scores for roads under trees and a count of road pieces (problem 3), and a graph analysis of the extracted roads (problem 4). The contributions listed in Section~\ref{sec:introduction} follow from these.
 
 \section{Method}
 \label{sec:method}
@@ -228,6 +301,19 @@ where the removed nodes are those with the highest betweenness. A low $R$ means 
 
 The DeepGlobe road extraction dataset~\cite{demir2018deepglobe} has 6,226 labelled satellite tiles of $1024 \times 1024$ pixels at 0.5~m per pixel, mostly from rural and suburban areas of Thailand, Indonesia, and India. We shuffle the tiles with a fixed random seed (42) and keep the last 10\% (623 tiles) for testing. From the remaining 5,603 tiles, 280 are set aside as a selection set for choosing the best epoch, and the other 5,323 are used for training. The 623 test tiles are therefore used only once, for the final evaluation. Our evaluation procedure rebuilds the split and checks that it matches the tile list recorded in the trained model.
 
+\subsection{Dataset Quality}
+
+The images are RGB with 0.5~m pixels, from DigitalGlobe satellites~\cite{demir2018deepglobe}. The 623 test tiles show how unbalanced the task is. Road pixels make up 4.17\% of a tile on average (median 2.51\%, range 0.23\% to 19.6\%), so a model that predicted no road at all would still be about 96\% correct per pixel; this is why we report IoU and F1 rather than pixel accuracy. Every test tile contains at least 1,000 road pixels, and the median tile has two separate road parts. By the vegetation index described in the evaluation subsection below, 5.2\% of all road pixels lie under trees, and in 104 tiles more than 10\% do.
+
+The labels have known weaknesses that affect every score in this paper. The DeepGlobe authors note that the labels are not perfect in rural areas and that small farm tracks were deliberately left out~\cite{demir2018deepglobe}. The drawn road width also varies: some dirt tracks are labelled with a line only a few pixels wide, while the network predicts the full visible width. Fig.~\ref{fig:gt} shows both effects. On tile 363269 the predicted road follows the labelled route along its whole length, yet the IoU is only 36.4\% because the label is much thinner than the road and two short pieces at the right edge are not in the label. On tile 540699 the network finds a track in the middle of the tile that appears in the image but is missing from the label. Strict pixel scores therefore understate the quality of the extracted network, and we also report a relaxed F1 and clDice, which are less sensitive to width and small offsets.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{fig_ground_truth.png}
+\caption{Predictions checked against the ground truth on five test tiles. Rows: input image, ground truth label, and prediction of the deployed pipeline (four flip TTA, hysteresis, closing, and gap bridging) with its per tile IoU. Grey: road in both; orange: predicted road not in the label; blue: labelled road that was missed. The tiles lie at the 10th, 30th, 50th, 70th, and 90th percentile of per tile IoU over the 623 test tiles, so they were not hand picked.}
+\label{fig:gt}
+\end{figure*}
+
 \subsection{Training}
 
 Table~\ref{tab:train} lists the settings. The model was trained from random weights, without ImageNet pretraining, on one NVIDIA Tesla T4 GPU on Kaggle, which took about 12.5 hours (4.7 min per epoch). Each step uses random $512 \times 512$ crops, so the network sees more of the surroundings of each road. Because roads run in every direction, the crops are flipped and rotated by multiples of $90^{\circ}$, and they are also slightly scaled and rotated, recoloured, and covered with synthetic tree shadows. We keep an exponential moving average (EMA) of the weights, a smoothed copy that is often more accurate than the weights at any single step. After every epoch, both the model and its EMA copy are scored on the selection set at full $1024 \times 1024$ resolution, and the best one is saved. Training is never stopped before epoch 80, and only stops early if the selection score has not improved for 40 epochs. Fig.~\ref{fig:curves} shows that the score levelled off at about 60.8\% over the last 40 epochs, so the model is not undertrained.
@@ -290,7 +376,7 @@ Speed is measured on an Intel Core i5-1035G4 laptop processor using four threads
 \begin{figure*}[t]
 \centering
 \includegraphics[width=\textwidth]{fig_inference_ablation.pdf}
-\caption{Effect of each inference and postprocessing step on 623 validation tiles: (a) IoU, (b) relaxed F1, (c) clDice, and (d) median number of connected road parts per tile, with the ground truth median shown as a dotted line. The dark bar is the deployed setting. Original bridging also joins road ends at the tile border; the border fix ignores them.}
+\caption{Effect of each inference and postprocessing step on the 623 test tiles: (a) IoU, (b) relaxed F1, (c) clDice, and (d) median number of connected road parts per tile, with the ground truth median shown as a dotted line. The dark bar is the deployed setting. Original bridging also joins road ends at the tile border; the border fix ignores them.}
 \label{fig:ablation}
 \end{figure*}
 
@@ -337,10 +423,10 @@ Proposed (ONNX) & 1.60 & 60.7 & 6.2$^{\mathrm{b}}$ & 1.27$^{\mathrm{c}}$ \\
 
 \subsection{Accuracy}
 
-Table~\ref{tab:acc} reports accuracy on the 623 validation tiles. The best pixel accuracy comes from TTA with a threshold of 0.5: an IoU of 61.1\% (95\% bootstrap interval 60.0\% to 62.1\%), an F1 of 75.8\%, a relaxed F1 of 86.7\%, and a clDice of 84.5\%. TTA raises the IoU of a single pass from 59.8\% to 61.1\%. With the full postprocessing, TTA gives no significant further gain (Wilcoxon signed rank test, $p = 0.48$).
+Table~\ref{tab:acc} reports accuracy on the 623 test tiles. The best pixel accuracy comes from TTA with a threshold of 0.5: an IoU of 61.1\% (95\% bootstrap interval 60.0\% to 62.1\%), an F1 of 75.8\%, a relaxed F1 of 86.7\%, and a clDice of 84.5\%. TTA raises the IoU of a single pass from 59.8\% to 61.1\%. With the full postprocessing, TTA gives no significant further gain (Wilcoxon signed rank test, $p = 0.48$).
 
 \begin{table}[t]
-\caption{Accuracy on 623 DeepGlobe Validation Tiles at Native Resolution (\%)}
+\caption{Accuracy on 623 DeepGlobe Test Tiles at Native Resolution (\%)}
 \label{tab:acc}
 \setlength{\tabcolsep}{3pt}
 \tablebodyfont
@@ -394,7 +480,7 @@ TTA, full & \textbf{75.1} & \textbf{86.4} & \textbf{88.9} & \textbf{93.5} \\
 
 \subsection{Effect of the Training Recipe}
 
-Our first full resolution run (v3) used the same network and loss but a shorter recipe: 50 epochs, $256 \times 256$ crops, only flips and colour changes, no weight averaging, and the tree shadow augmentation inactive because of a software version problem. Its best validation score was reached at the last epoch, a sign that it was still improving. Table~\ref{tab:recipe} compares it with the final recipe on the same 623 test tiles. The final model is better on every measure; its IoU is higher on 90\% of the tiles, with a mean gain of 8.8 points per tile (Wilcoxon signed rank test, $p < 10^{-80}$). Recall under canopy rises the most, from 43.1\% to 60.3\%, which suggests that the tree shadow augmentation and the larger crops help most where roads are hidden. The v3 epoch was chosen on the test tiles themselves, which can only favour v3, so the true gain is if anything larger.
+An earlier run with a short recipe used the same network and loss but a weaker training setup: 50 epochs, $256 \times 256$ crops, only flips and colour changes, no weight averaging, and the tree shadow augmentation inactive because of a software version problem. Its best validation score was reached at the last epoch, a sign that it was still improving. Table~\ref{tab:recipe} compares it with the full recipe of Table~\ref{tab:train} on the same 623 test tiles. The full recipe is better on every measure; its IoU is higher on 90\% of the tiles, with a mean gain of 8.8 points per tile (Wilcoxon signed rank test, $p < 10^{-80}$). Recall under canopy rises the most, from 43.1\% to 60.3\%, which suggests that the tree shadow augmentation and the larger crops help most where roads are hidden. The epoch of the short recipe run was chosen on the test tiles themselves, which can only favour that run, so the true gain is if anything larger.
 
 \begin{table}[t]
 \caption{Effect of the Training Recipe on the 623 Test Tiles (\%)}
@@ -403,20 +489,22 @@ Our first full resolution run (v3) used the same network and loss but a shorter 
 \tablebodyfont
 \begin{tabular}{|l|c|c|c|c|c|}
 \hline
-Model, inference & IoU & F1 & Rel. F1 & clDice & Canopy R \\
+Recipe, inference & IoU & F1 & Rel. F1 & clDice & Canopy R \\
 \hline
-v3, TTA, $t = 0.5$ & 52.7 & 69.0 & 79.9 & 76.8 & 43.1 \\
-Final, TTA, $t = 0.5$ & \textbf{61.1} & \textbf{75.8} & \textbf{86.7} & \textbf{84.5} & 60.3 \\
-v3, TTA, full & 43.4 & 60.5 & 72.5 & 67.1 & 63.0 \\
-Final, TTA, full & 52.6 & 69.0 & 80.7 & 75.8 & \textbf{75.1} \\
+Short, TTA, $t = 0.5$ & 52.7 & 69.0 & 79.9 & 76.8 & 43.1 \\
+Full, TTA, $t = 0.5$ & \textbf{61.1} & \textbf{75.8} & \textbf{86.7} & \textbf{84.5} & 60.3 \\
+Short, TTA, full & 43.4 & 60.5 & 72.5 & 67.1 & 63.0 \\
+Full, TTA, full & 52.6 & 69.0 & 80.7 & 75.8 & \textbf{75.1} \\
 \hline
-\multicolumn{6}{p{215pt}}{v3: 50 epochs, $256 \times 256$ crops, flips and colour only. Final: Table~\ref{tab:train}. Canopy R: recall on road pixels under tree cover.}
+\multicolumn{6}{p{215pt}}{Short: 50 epochs, $256 \times 256$ crops, flips and colour only. Full: the recipe of Table~\ref{tab:train}. Canopy R: recall on road pixels under tree cover.}
 \end{tabular}
 \end{table}
 
 Two earlier problems also shaped the protocol. One run collapsed at epoch 46 and marked 80.9\% of the pixels of four sample tiles as road; the 20\% gate of Section~\ref{sec:method} now rejects such epochs. Earlier runs also validated on tiles resized to $256 \times 256$ pixels, which made roads four times thinner than in training and misled the choice of epoch; all later runs validate at full resolution.
 
 \subsection{Qualitative Results}
+
+Fig.~\ref{fig:gt} compares predictions with the ground truth on five test tiles chosen by their rank, from a weak tile (IoU 36.4\%) to a strong one (76.3\%). On all five the main roads are found and follow the labelled routes. The errors are of three kinds. Some predicted roads are wider than their labels, which costs IoU without changing the route (tile 363269). Some tracks are predicted that are not in the label, some of them visible in the image (tiles 363269 and 540699). The clearest misses are short side streets in a dense village, shown in blue on tile 48094, probably because narrow lanes between houses are hard to separate from roofs and yards. On tile 617785, with two roads running through a vegetated valley, the prediction almost matches the label.
 
 Fig.~\ref{fig:pred} shows the output of the full pipeline on eight rural sample tiles. Roads through forest, farmland, and villages are recovered as continuous lines. Some thin straight segments, for example on tiles 100892 and 139076, are added by gap bridging and do not follow a visible road. On tile 195274, which has only faint field tracks, the model finds the track along the lower edge but misses the others, an example of the lower recall on narrow, low contrast roads.
 
@@ -428,28 +516,38 @@ Fig.~\ref{fig:graph} applies the analysis of Section~\ref{sec:method} to the pre
 \section{Discussion and Limitations}
 \label{sec:discussion}
 
-The network has fewer than two million parameters and processes a tile in about 1.3 s on a laptop processor without a graphics card. Its relaxed F1 of 86.7\% and clDice of 84.5\% show that most road centrelines are recovered. Several limitations remain.
+The network has fewer than two million parameters and processes a tile in about 1.3 s on a laptop processor without a graphics card. Its relaxed F1 of 86.7\% and clDice of 84.5\% show that most road centrelines are recovered.
+
+\subsection{Heavy Versus Lightweight Models}
+
+Tables~\ref{tab:literature} and~\ref{tab:cost} together show what a large model buys. In the study of Cui \emph{et al.}~\cite{cui2025hplnet}, where all networks share one split, the best large network (RcfsNet, 76.7 million parameters) is only 0.8 points of IoU above the best small one (HPLNet, 2.9 million) on DeepGlobe, and it is below it on Massachusetts. Beyond a few million parameters, size therefore adds little accuracy for road extraction; one possible reason is that roads are a single thin class that does not need a very large model. The cost, on the other hand, grows quickly. In PyTorch on our laptop, U-Net needs 14.75 s per tile and 118 MB of weights, D-LinkNet 2.48 s and 119 MB, and our network 1.89 s and 6.1 MB, or 1.27 s with ONNX Runtime. Size is not the only factor: LR-ASPP MobileNetV3 has twice as many parameters as our network but runs faster, because its operations are cheaper. Large networks keep two advantages: they can start from encoders pretrained on ImageNet, and their extra capacity may help on harder, more varied data. Our network gives up these advantages for a model that fits in a few megabytes and runs on an ordinary laptop. A direct comparison on the same split remains to be done (see below).
+
+\subsection{Use on Other Datasets}
+
+The network contains no layer tied to a fixed image size, so it accepts any image whose sides are multiples of 32, and the released inference script can be applied to tiles from any of the datasets in Table~\ref{tab:datasets}. We have not yet measured its accuracy on another dataset, so we make no claim about how well it transfers. Three points matter. The model was trained on 0.5~m pixels; on 1~m data such as Massachusetts a road is half as wide in pixels, so the images should be resampled to 0.5~m or the model fine tuned on the new data. The bridging distances are also set in pixels (220 pixels, or 110~m at 0.5~m per pixel) and must be scaled with the pixel size. Labels drawn with a fixed width, as in Massachusetts, would also change the meaning of strict IoU.
+
+\subsection{Limitations}
 
 \begin{itemize}
 
-\item \emph{No baselines on the same split.} The reference networks in Table~\ref{tab:cost} were compared on cost only. Accuracy figures published for DeepGlobe use different splits and cannot be compared directly with Table~\ref{tab:acc}. Training the reference networks on our split is required for a fair accuracy comparison.
+\item \emph{No baselines on the same split.} The reference networks in Table~\ref{tab:cost} were compared on cost only. Accuracy figures published for DeepGlobe (Table~\ref{tab:literature}) use different splits and cannot be compared directly with Table~\ref{tab:acc}. Training the reference networks on our split is required for a fair accuracy comparison.
 
 \item \emph{No pretraining.} The encoder was trained from random weights because its custom layers do not match standard ImageNet weights. Training converged (Fig.~\ref{fig:curves}), so further gains are more likely to come from pretraining or more data than from more epochs.
 
 \item \emph{Heuristic bridging.} The bridging rules use fixed distances in pixels and depend on the ground sampling distance. They can also create false links.
 
-\item \emph{Single dataset.} DeepGlobe covers rural areas but not specifically PMGSY roads. Validation on Indian rural imagery is future work.
+\item \emph{Single dataset.} All results are on DeepGlobe. Testing on a second dataset such as Massachusetts Roads, and on Indian rural imagery of PMGSY roads, is future work.
 
 \end{itemize}
 
 \section{Conclusion}
 \label{sec:conclusion}
 
-We presented a road extraction network with 1.60 million parameters that combines MobileViT v2 attention, attention gates, and road shaped convolutions, trained with a connectivity aware loss and followed by geometric gap bridging. At native resolution on 623 held out DeepGlobe tiles it reaches an IoU of 61.1\%, a relaxed F1 of 86.7\%, and a clDice of 84.5\%, and it runs in 1.27 s per tile on a laptop processor without a deep learning framework. Recall on roads under tree canopy remains 20 points below recall on open roads; the postprocessing narrows this gap to 14 points and yields a connected network with as few parts as the ground truth. A longer training recipe with stronger augmentation gave the largest single improvement, 8.4 points of IoU. Future work will pretrain the encoder, train the reference networks on the same split, replace the heuristic bridging with a learned connection model, and evaluate on Indian rural imagery.
+We presented a road extraction network with 1.60 million parameters that combines MobileViT v2 attention, attention gates, and road shaped convolutions, trained with a connectivity aware loss and followed by geometric gap bridging. At native resolution on 623 held out DeepGlobe tiles it reaches an IoU of 61.1\%, a relaxed F1 of 86.7\%, and a clDice of 84.5\%, and it runs in 1.27 s per tile on a laptop processor without a deep learning framework. Recall on roads under tree canopy remains 20 points below recall on open roads; the postprocessing narrows this gap to 14 points and yields a connected network with as few parts as the ground truth. A longer training recipe with stronger augmentation gave the largest single improvement, 8.4 points of IoU. Published results suggest that small networks can match large ones in accuracy, and our measurements show that they are far cheaper to run. Future work will pretrain the encoder, train the reference networks on the same split, replace the heuristic bridging with a learned connection model, and evaluate on a second dataset and on Indian rural imagery.
 
 \section*{Data Availability}
 
-The DeepGlobe road extraction dataset is publicly available from the DeepGlobe 2018 challenge~\cite{demir2018deepglobe}. The eight sample tiles in Fig.~\ref{fig:pred} and the measurement files used in this paper are included with the supplementary material. The identifiers of the 623 validation tiles are provided with the supplementary material.
+The DeepGlobe road extraction dataset is publicly available from the DeepGlobe 2018 challenge~\cite{demir2018deepglobe}. The eight sample tiles in Fig.~\ref{fig:pred} and the measurement files used in this paper are included with the supplementary material. The identifiers of the 623 test tiles are provided with the supplementary material.
 
 \section*{Conflict of Interest}
 
@@ -457,7 +555,7 @@ The authors declare that they have no known competing financial interests or per
 
 \section*{Acknowledgment}
 
-The authors thank the IEEE Computer Society Bangalore Chapter for the internship and mentorship program, and the organisers of the DeepGlobe 2018 challenge for releasing the dataset.
+The authors thank the organisers of the DeepGlobe 2018 challenge for releasing the dataset.
 
 \begin{thebibliography}{00}
 
@@ -477,6 +575,12 @@ L. Zhou, C. Zhang, and M. Wu,
 in \emph{Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit. Workshops (CVPRW)},
 Salt Lake City, UT, USA, 2018, pp. 182--186.
 
+\bibitem{cui2025hplnet}
+S. Cui, Q. Feng, L. Ji, X. Liu, and B. Guo,
+``HPLNet: A hierarchical perception lightweight network for road extraction,''
+\emph{Front. Remote Sens.}, vol. 6, Sep. 2025, Art. no. 1668978,
+doi: 10.3389/frsen.2025.1668978.
+
 \bibitem{mehta2023separable}
 S. Mehta and M. Rastegari,
 ``Separable self-attention for mobile vision transformers,''
@@ -488,28 +592,48 @@ O. Oktay \emph{et al.},
 in \emph{Proc. Med. Imag. Deep Learn. (MIDL)},
 Amsterdam, The Netherlands, 2018.
 
-\bibitem{cui2025hplnet}
-S. Cui, Q. Feng, L. Ji, X. Liu, and B. Guo,
-``HPLNet: A hierarchical perception lightweight network for road extraction,''
-\emph{Front. Remote Sens.}, vol. 6, Sep. 2025, Art. no. 1668978,
-doi: 10.3389/frsen.2025.1668978.
-
 \bibitem{shit2021cldice}
 S. Shit \emph{et al.},
 ``clDice: A novel topology-preserving loss function for tubular structure segmentation,''
 in \emph{Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit. (CVPR)},
 2021, pp. 16560--16569.
 
-\bibitem{chen2017deeplab}
-L.-C. Chen, G. Papandreou, F. Schroff, and H. Adam,
-``Rethinking atrous convolution for semantic image segmentation,''
-2017, \emph{arXiv:1706.05587}.
+\bibitem{mnih2013thesis}
+V. Mnih,
+``Machine learning for aerial image labeling,''
+Ph.D. dissertation, Dept. Comput. Sci., Univ. Toronto, Toronto, ON, Canada, 2013.
+
+\bibitem{vanetten2018spacenet}
+A. Van Etten, D. Lindenbaum, and T. M. Bacastow,
+``SpaceNet: A remote sensing dataset and challenge series,''
+2018, \emph{arXiv:1807.01232}.
+
+\bibitem{zhu2021chn6}
+Q. Zhu \emph{et al.},
+``A global context-aware and batch-independent network for road extraction from VHR satellite imagery,''
+\emph{ISPRS J. Photogramm. Remote Sens.}, vol. 175, pp. 353--365, May 2021.
 
 \bibitem{demir2018deepglobe}
 I. Demir \emph{et al.},
 ``DeepGlobe 2018: A challenge to parse the Earth through satellite images,''
 in \emph{Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit. Workshops (CVPRW)},
 Salt Lake City, UT, USA, 2018, pp. 172--181.
+
+\bibitem{long2015fcn}
+J. Long, E. Shelhamer, and T. Darrell,
+``Fully convolutional networks for semantic segmentation,''
+in \emph{Proc. IEEE Conf. Comput. Vis. Pattern Recognit. (CVPR)},
+Boston, MA, USA, 2015, pp. 3431--3440.
+
+\bibitem{chen2017deeplab}
+L.-C. Chen, G. Papandreou, F. Schroff, and H. Adam,
+``Rethinking atrous convolution for semantic image segmentation,''
+2017, \emph{arXiv:1706.05587}.
+
+\bibitem{mei2021coanet}
+J. Mei, R.-J. Li, W. Gao, and M.-M. Cheng,
+``CoANet: Connectivity attention network for road extraction from satellite imagery,''
+\emph{IEEE Trans. Image Process.}, vol. 30, pp. 8540--8552, 2021.
 
 \bibitem{sandler2018mobilenetv2}
 M. Sandler, A. Howard, M. Zhu, A. Zhmoginov, and L.-C. Chen,
@@ -541,10 +665,17 @@ S. He \emph{et al.},
 in \emph{Proc. Eur. Conf. Comput. Vis. (ECCV)},
 2020, pp. 51--67.
 
-\bibitem{vanetten2018spacenet}
-A. Van Etten, D. Lindenbaum, and T. M. Bacastow,
-``SpaceNet: A remote sensing dataset and challenge series,''
-2018, \emph{arXiv:1807.01232}.
+\bibitem{freeman1977betweenness}
+L. C. Freeman,
+``A set of measures of centrality based on betweenness,''
+\emph{Sociometry}, vol. 40, no. 1, pp. 35--41,
+Mar. 1977.
+
+\bibitem{latora2001efficient}
+V. Latora and M. Marchiori,
+``Efficient behavior of small-world networks,''
+\emph{Phys. Rev. Lett.}, vol. 87, no. 19, Oct. 2001,
+Art. no. 198701.
 
 \bibitem{mnih2010roads}
 V. Mnih and G. E. Hinton,
@@ -563,35 +694,11 @@ N. Otsu,
 \emph{IEEE Trans. Syst., Man, Cybern.}, vol. SMC-9, no. 1, pp. 62--66,
 Jan. 1979.
 
-\bibitem{freeman1977betweenness}
-L. C. Freeman,
-``A set of measures of centrality based on betweenness,''
-\emph{Sociometry}, vol. 40, no. 1, pp. 35--41,
-Mar. 1977.
-
-\bibitem{latora2001efficient}
-V. Latora and M. Marchiori,
-``Efficient behavior of small-world networks,''
-\emph{Phys. Rev. Lett.}, vol. 87, no. 19, Oct. 2001,
-Art. no. 198701.
-
 \bibitem{onnxruntime}
 ONNX Runtime developers,
 ``ONNX Runtime.''
 
 \end{thebibliography}
-
-\begin{IEEEbiography}{Dilraj Singh}
-is currently pursuing the B.E. degree in computer science and engineering
-(artificial intelligence and machine learning) at R. V. College of Engineering,
-Bengaluru, India. [Research interests.]
-\end{IEEEbiography}
-
-\begin{IEEEbiography}{Arya Wadhwa}
-is currently pursuing the B.E. degree in computer science and engineering
-(artificial intelligence and machine learning) at R. V. College of Engineering,
-Bengaluru, India. [Research interests.]
-\end{IEEEbiography}
 
 \EOD
 

@@ -24,6 +24,7 @@ figures:            ## regenerate the paper figures that run locally
 	python scripts/paper_figures/pipeline_stages.py
 	python scripts/paper_figures/graph_analysis.py
 	python scripts/paper_figures/training_curves.py
+	python scripts/paper_figures/ground_truth_figure.py
 
 notebooks:          ## rebuild the Kaggle notebooks from their source scripts
 	python scripts/build_train_v4_notebook.py

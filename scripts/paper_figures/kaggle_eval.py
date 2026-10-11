@@ -697,7 +697,9 @@ print(latex)
 # %%
 # ── 11. Figures ──
 style.apply()
-C, L = style.MODEL_COLORS, style.MODEL_LABELS
+C, L = style.MODEL_COLORS, dict(style.MODEL_LABELS)
+if SPLIT_MODE == "v4":   # style.MODEL_LABELS still names the August v2 models
+    L.update({"final": "Proposed (v4)", "run1": "v3 (ep. 49)"})
 SPLIT_NOTE = "" if SPLIT_VERIFIED else "  [split NOT verified]"
 FOOT = f"DeepGlobe validation split, {SPLIT['n_eval']} tiles, native 1024\u00b2 resolution{SPLIT_NOTE}"
 
